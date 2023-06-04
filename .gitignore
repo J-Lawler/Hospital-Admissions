@@ -49,4 +49,7 @@ po/*~
 rsconnect/
 
 # Data folder
-Data/
+Data_Raw/
+Data_Clean/
+Models/
+Results/
