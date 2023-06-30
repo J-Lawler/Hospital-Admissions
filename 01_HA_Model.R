@@ -1,8 +1,20 @@
 
 
-#############################################################################
 
-# Attempt at Poisson-Poisson Model
+
+########## Contents ##########
+
+# Preamble
+
+# Data Preparation
+
+# Poisson Poisson Model 
+
+  ## Stan Code
+
+  ## Prior Predictive
+
+  ## Posterior
 
 
 
@@ -74,17 +86,9 @@ df_fix_stan <- expand_grid(Geo = 1:32,
                            Adm = 1:3)|>
   left_join(df_fix_age, by = "Age")
 
-write_parquet(df_fix_stan, sink = "Data_Clean/df_fix_stan.parquet")
+# write_parquet(df_fix_stan, sink = "Data_Clean/df_fix_stan.parquet")
 
 ########## Poisson Poisson Model ##########
-
-# Note that Population is not necessarily greater than Stay or Length of Stay
-
-diff <- df_HA_model$Population - df_HA_model$TotalLengthofStay
-
-min_index <- which(diff == min(diff))
-
-df_HA_model[min_index,]
 
 
 #### Stan Code ####
@@ -278,7 +282,12 @@ list_pois_prior <- list(los = df_HA_stan$TotalLengthofStay,
                         age_proj = rep(1,10),
                         geo_proj = rep(1,10),
                         male_proj = rep(1,10),
-                        perform_projections = 0)
+                        n_fix = 10,
+                        log_pop_fix = rep(1,10),
+                        adm_fix = rep(1,10),
+                        age_fix = rep(1,10),
+                        geo_fix = rep(1,10),
+                        male_fix = rep(1,10))
 
 
 if(!file.exists("Models/samples_pois_prior.rds")){
@@ -458,7 +467,7 @@ if(!file.exists("Models/samples_pois_post.rds")){
   # Sample
   samples_pois_post <-  sampling(stan_pois,
                                  data = list_pois_post, 
-                                 chains=1, iter = 1000,
+                                 chains=2, iter = 1000,
                                  cores = parallel::detectCores())
   
   # Save file
@@ -467,30 +476,20 @@ if(!file.exists("Models/samples_pois_post.rds")){
   samples_pois_post <- readRDS(file="Models/samples_pois_post.rds")
 }
 
-
-### Add in diagnostic work here. Trace plots and function to extract Rhat.
-# read Rhat() documentation, think I can use gather_draws to shape like this.
-
-
-# pars = c("b_adm_sty","b_age_sty","b_male_sty","b_geo_sty", 
-#          "b_adm_los","b_age_los","b_male_los","b_geo_los", 
-#          "rep_stays","rep_los",
-#          "proj_stays_int","proj_los")
-
-# print(samples_pois_post, pars = c("b_adm_sty","b_age_sty","b_male_sty","b_geo_sty"))
-
-
 # Save Model Outputs
 if(!file.exists("Model_Outputs/draws_post_param.parquet") |
    !file.exists("Model_Outputs/draws_post_reps.parquet") |
-   !file.exists("Model_Outputs/draws_post_proj.parquet")){
+   !file.exists("Model_Outputs/draws_post_proj.parquet") |
+   !file.exists("Model_Outputs/draws_post_fix.parquet")){
   
-  # draws_post_param <- gather_draws(samples_pois_post,
-  #                                  b_adm_sty[i],b_age_sty[i],b_male_sty,b_geo_sty[i], 
-  #                                  b_adm_los[i],b_age_los[i],b_male_los,b_geo_los[i])
-  # 
-  # Save file
-  #write_parquet(draws_post_param,sink="Model_Outputs/draws_post_param.parquet")
+  draws_post_param <- gather_draws(samples_pois_post,
+                                   b_adm_sty[i],b_age_sty[i],b_male_sty,b_geo_sty[i],
+                                   b_adm_los[i],b_age_los[i],b_male_los,b_geo_los[i])
+
+  #Save file
+  write_parquet(draws_post_param,sink="Model_Outputs/draws_post_param.parquet")
+  
+  
   
   draws_post_reps <- gather_draws(samples_pois_post, 
                                   rep_stays[i], mu_sty[i],
@@ -499,16 +498,27 @@ if(!file.exists("Model_Outputs/draws_post_param.parquet") |
   # Save file
   write_parquet(draws_post_reps,sink="Model_Outputs/draws_post_reps.parquet")
   
+  
+  
   draws_post_proj <- gather_draws(samples_pois_post, 
                                   proj_stays_int[i], proj_los[i])
   
   # Save file
   write_parquet(draws_post_proj,sink="Model_Outputs/draws_post_proj.parquet")
   
+  
+  
+  draws_post_fix <- gather_draws(samples_pois_post, 
+                                  fix_stays_int[i], fix_los[i])
+  
+  # Save file
+  write_parquet(draws_post_fix,sink="Model_Outputs/draws_post_fix.parquet")
+  
 }else{
   draws_post_param <- read_parquet("Model_Outputs/draws_post_param.parquet")
   draws_post_reps <- read_parquet("Model_Outputs/draws_post_reps.parquet")
   draws_post_proj <- read_parquet("Model_Outputs/draws_post_proj.parquet")
+  draws_post_fix <- read_parquet("Model_Outputs/draws_post_fix.parquet")
 }
 
 
@@ -578,197 +588,6 @@ if(!file.exists("Plots/plt_post_pred_los.rds")){
 
 
 
-
-
-
-
-
-
-# Plot Histogram of Prior Reps
-if(!file.exists("Plots/plt_prior_reps.rds")){
-  
-  plt_prior_reps <- draws_prior_reps|>
-    filter(!(.variable == "rep_stays" & .value >2000), # scale plot wrt 99th percentile
-           !(.variable == "rep_los" & .value >15000))|>
-    mutate(.variable = case_match(.variable,
-                                  "mu_sty" ~ "Mu Stays",
-                                  "mu_los" ~ "Mu Total Length of Stays",
-                                  "rep_sty" ~ "Number of Stays",
-                                  "rep_los" ~ "Total Length of Stay"))|>
-    ggplot(aes(x = .value))+
-    geom_histogram(fill="#440154", bins = 30)+
-    facet_wrap(~.variable, scales = "free")+
-    ggtitle("Prior Predictive Distribution")+
-    ylab("Count")+
-    xlab("Value")+
-    scale_y_continuous(labels = ~ format(.x, scientific = FALSE))+
-    theme_bw()
-  
-  # Save Plot
-  saveRDS(plt_prior_reps, "Plots/plt_prior_reps.rds")
-  
-}else{
-  plt_prior_reps <- readRDS("Plots/plt_prior_reps.rds")
-}
-
-
-
-
-
-
-
-
-#### Simulation ####
-
-# Simulate data:
-# Age
-# Male
-# Population
-# age parameters
-# sex parameter
-# Length of Stay
-
-
-
-if(!file.exists("Data_Clean/Simulated Data Simple Poisson (CA).csv")){
-  
-  sim_rows <- 10*3*19*2*32 # Number of Years * Adm Categories 
-  # * Age Categories * Sex Categories * Num Geo
-  
-  # Set Seed
-  set.seed(1)
-  
-  # Parameter values for age, maleness, geographical unit
-  sim_param_adm <- rnorm(n=3, mean = 0, sd = 1)
-  sim_param_age <-  -4+(7/19)*1:19
-  sim_param_male <-  1
-  sim_param_geo <- c(0, runif(n=31,min=-1,max = 1))
-  
-  # Create simulated data
-  df_sim <- expand_grid(Year = 1:10, Age = 1:19, Male = 0:1, Geo = 1:32)|>
-    mutate(param_age = sim_param_age[Age],
-           param_male = if_else(Male == 1, sim_param_male, 0),
-           param_geo = sim_param_geo[Geo],
-           Population = as.integer(10000 - if_else(Age<=8,5000/Age,200*Age)
-                                   +runif(n = sim_rows, min = -4000, max = 4000)),
-           TotalLengthofStay = rpois(n = sim_rows, 
-                                     lambda = Population*exp(param_age 
-                                                             + param_male
-                                                             + param_geo)))
-  
-  write_csv(df_sim, file = "Data_Clean/Simulated Data Simple Poisson (CA).csv")
-  
-}else{
-  
-  df_sim <- read_csv("Data_Clean/Simulated Data Simple Poisson (CA).csv")
-  
-}
-
-# Plot overall population against age - pattern looks reasonable
-df_sim|>
-  group_by(Age)|>
-  summarise(Population = sum(Population))|>
-  ggplot(aes(x = Age, y = Population))+
-  geom_point()
-
-
-# Extract True (Simulated) Parameter Values
-
-f_extract_sim_param <- function(df, name, param_name){
-  result <- df|>
-    select(name, param_name)|>
-    unique()|>
-    arrange(name)|>
-    pull(param_name)}
-
-sim_param_age <-  f_extract_sim_param(df_sim, "Age", "param_age")
-sim_param_male <-  f_extract_sim_param(df_sim, "Male", "param_male")[2]
-sim_param_geo <-  f_extract_sim_param(df_sim, "Geo", "param_geo")
-
-
-#### Test Model on Simulated Data ####
-
-# Input list
-list_pois_sim <- list(los = df_sim$TotalLengthofStay,
-                      pop = df_sim$Population,
-                      age = df_sim$Age,
-                      geo = df_sim$Geo,
-                      male = df_sim$Male,
-                      condition_on_data = 1,
-                      perform_projections = 0,
-                      n = nrow(df_sim),
-                      n_age = 19,
-                      n_geo = 32,
-                      n_proj = 10,
-                      pop_proj = rep(1,10),
-                      age_proj = rep(1,10),
-                      geo_proj = rep(1,10),
-                      male_proj = rep(1,10),
-                      perform_projections = 0)
-
-
-
-if(!file.exists("Models/samples_pois_sim.rds")){
-  # Compiles the model
-  stan_pois <- stan_model(model_name = "stan_pois",model_code=code_pois)
-  
-  # Sample
-  samples_pois_sim <-  sampling(stan_pois,
-                                data = list_pois_sim, 
-                                chains=4, iter = 1000,
-                                cores = parallel::detectCores())
-  
-  # Save file
-  saveRDS(samples_pois_sim,file="Models/samples_pois_sim.rds")
-}else{
-  samples_pois_sim <- readRDS(file="Models/samples_pois_sim.rds")
-}
-
-
-
-# Plot Whether the 95% CI Covers the True Parameter Values
-if(!file.exists("Plots/pl_sim_param_age.rds")){
-  pl_sim_param_age <- samples_pois_sim|>gather_draws(b_age[i],b_male)|>
-    mean_qi(.value, .width=0.95)|>
-    #filter(i < 8 | is.na(i))|>
-    mutate(i = if_else(i<10,paste0("0",i),as.character(i)),
-           j = if_else(is.na(i),"Age",i))|>
-    ggplot(aes(x=j,y=.value,ymin = .lower, ymax = .upper))+ 
-    geom_pointinterval()+
-    geom_point(aes(y = c(sim_param_age,sim_param_male)), col = "red", shape = 18, size = 4)+
-    facet_wrap(~j, nrow=4, scales = "free")+
-    theme(axis.text.x=element_blank(), 
-          axis.ticks.x=element_blank(), 
-          axis.text.y=element_blank(),  
-          axis.ticks.y=element_blank())+
-    ggtitle("Does the model recover the age and male parameters?")
-  
-  saveRDS(pl_sim_param_age, file = "Plots/pl_sim_param_age.rds")
-}else{
-  pl_sim_param_age <- readRDS("Plots/pl_sim_param_age.rds")
-}
-
-# Plot Results
-if(!file.exists("Plots/pl_sim_param_geo.rds")){
-  pl_sim_param_geo <- samples_pois_sim|>gather_draws(b_geo[i])|>
-    mean_qi(.value, .width=0.95)|>
-    ggplot(aes(x=i,y=.value,ymin = .lower, ymax = .upper))+ 
-    geom_pointinterval()+
-    geom_point(aes(y = sim_param_geo), col = "red", shape = 18, size = 4)+
-    facet_wrap(~i, nrow=4, scales = "free")+
-    theme(axis.text.x=element_blank(), 
-          axis.ticks.x=element_blank(), 
-          axis.text.y=element_blank(),  
-          axis.ticks.y=element_blank())+
-    ggtitle("Does the model recover the geographic parameters?")
-  
-  saveRDS(pl_sim_param_geo, file = "Plots/pl_sim_param_geo.rds")
-}else{
-  pl_sim_param_geo <- readRDS("Plots/pl_sim_param_geo.rds")
-}
-
-pl_sim_param_age
-pl_sim_param_geo
 
 
 

@@ -3,9 +3,14 @@
 
 # Preamble
 
-# Pre-Model Plots
+# Appendix B: Diagnostic Plots
 
-# Post-Model Plots
+# Section 1: Population Projections
+
+# Section 2: Factors Affecting Hospitalisation
+
+# Section 3: Hospitalisation Projections
+
 
 ########## Preamble ##########
 
@@ -31,524 +36,14 @@ df_HA_model <- read_csv("Data_Clean/HA Model Data.csv")|>
 df_proj_mean <- read_csv("Results/Quick Projections Posterior Mean.csv")|>
   mutate(Age = factor(Age, levels = age_levels)) # Restore factor levels
 
-
-
-########## Pre-Model Plots ##########
-
-## Ratio of patients to total population by age, grouped by council area.
-
-df_HA_model|>
-  group_by(CA_ID, Age)|>
-  summarise(Patients = sum(Patients),
-            Population = sum(Population))|>
-  mutate(patient_ratio = Patients / Population)|>
-  ggplot(mapping = aes(x= Age, y = patient_ratio, group = CA_ID))+
-  geom_line()+
-  theme(axis.text.x = element_text(angle = 90))
-
-
-
-
-
-########## Post-Model Plots ##########
-
-
-## Posterior mean - by age
-df_proj_mean|>
-  filter(Year %in% c(2023,2033,2043))|>
-  group_by(`Year`,`Age`)|>
-  summarise(Patients = mean(Patients))|>
-  ggplot(aes(x = Age, y = Patients, group = Year, col = Year))+
-  geom_line()+
-  theme(axis.text.x = element_text(angle = 90))
-
-
-
-
-########## Diagnostic Plots ##########
-
-# Load in Parameter Data
-draws_post_param <- read_parquet("Model_Outputs/draws_post_param.parquet")
-
-
-# Admission Type Trace Plot - Stays
-plt_trace_adm_sty <- draws_post_param|>
-  filter(.variable == "b_adm_sty")|>
-  mutate(.chain = as.factor(.chain),
-         adm_type = admission_levels[i])|>
-  rename(Chain = .chain)|>
-  ggplot(aes(x = .iteration, y = .value, colour = Chain))+
-  geom_line()+
-  facet_wrap(~adm_type, scales = "free_y", nrow = 3)+
-  ggtitle("Trace Plot for Admission Type Parameters - Number of Stays")+
-  xlab("Sample")+
-  ylab("Value")+
-  scale_color_viridis_d()+
-  theme_bw()
-
-plt_trace_adm_sty
-
-
-saveRDS(plt_trace_adm_sty, file = "Plots/plt_trace_adm_sty.rds")
-
-
-
-
-# Age Trace Plot - Stays
-plt_trace_age_sty <- draws_post_param|>
-  filter(.variable == "b_age_sty")|>
-  mutate(.chain = as.factor(.chain),
-         age = age_levels[i],
-         age = if_else(age=="90 years and over","90 years +",age))|>
-  rename(Chain = .chain)|>
-  ggplot(aes(x = .iteration, y = .value, colour = Chain))+
-  geom_line()+
-  facet_wrap(~age, scales = "free_y", nrow = 6)+
-  ggtitle("Trace Plot for Age Parameters - Number of Stays")+
-  xlab("Sample")+
-  ylab("Value")+
-  scale_color_viridis_d()+
-  theme_bw()+
-  theme(axis.text.x = element_text(angle = 45,size = 8),
-        axis.text.y = element_text(size = 8))+
-  scale_y_continuous(labels = function(x) round(x,2))
-
-plt_trace_age_sty
-
-saveRDS(plt_trace_age_sty, file = "Plots/plt_trace_age_sty.rds")
-
-
-# Sex Trace Plot - Stays
-plt_trace_male_sty <- draws_post_param|>
-  filter(.variable == "b_male_sty")|>
-  mutate(.chain = as.factor(.chain))|>
-  rename(Chain = .chain)|>
-  ggplot(aes(x = .iteration, y = .value, colour = Chain))+
-  geom_line()+
-  ggtitle("Trace Plot for Male Parameter - Number of Stays")+
-  xlab("Sample")+
-  ylab("Value")+
-  scale_color_viridis_d()+
-  theme_bw()
-
-plt_trace_male_sty
-
-saveRDS(plt_trace_male_sty, file = "Plots/plt_trace_male_sty.rds")
-
-### Length of Stay Parameter
-
-# Admission Type Trace Plot - Length of Stay
-plt_trace_adm_los <- draws_post_param|>
-  filter(.variable == "b_adm_los")|>
-  mutate(.chain = as.factor(.chain),
-         adm_type = admission_levels[i])|>
-  rename(Chain = .chain)|>
-  ggplot(aes(x = .iteration, y = .value, colour = Chain))+
-  geom_line()+
-  facet_wrap(~adm_type, scales = "free_y", nrow = 3)+
-  ggtitle("Trace Plot for Admission Type Parameters - Length of Stay")+
-  xlab("Sample")+
-  ylab("Value")+
-  scale_color_viridis_d()+
-  theme_bw()
-
-plt_trace_adm_los
-
-
-saveRDS(plt_trace_adm_los, file = "Plots/plt_trace_adm_los.rds")
-
-
-
-
-# Age Trace Plot - Length of Stay
-plt_trace_age_los <- draws_post_param|>
-  filter(.variable == "b_age_los")|>
-  mutate(.chain = as.factor(.chain),
-         age = age_levels[i],
-         age = if_else(age=="90 years and over","90 years +",age))|>
-  rename(Chain = .chain)|>
-  ggplot(aes(x = .iteration, y = .value, colour = Chain))+
-  geom_line()+
-  facet_wrap(~age, scales = "free_y", nrow = 6)+
-  ggtitle("Trace Plot for Age Parameters - Length of Stay")+
-  xlab("Sample")+
-  ylab("Value")+
-  scale_color_viridis_d()+
-  theme_bw()+
-  theme(axis.text.x = element_text(angle = 45,size = 8),
-        axis.text.y = element_text(size = 8))+
-  scale_y_continuous(labels = function(x) round(x,2))
-
-plt_trace_age_los
-
-saveRDS(plt_trace_age_los, file = "Plots/plt_trace_age_los.rds")
-
-
-# Sex Trace Plot - Length of Stay
-plt_trace_male_los <- draws_post_param|>
-  filter(.variable == "b_male_los")|>
-  mutate(.chain = as.factor(.chain))|>
-  rename(Chain = .chain)|>
-  ggplot(aes(x = .iteration, y = .value, colour = Chain))+
-  geom_line()+
-  ggtitle("Trace Plot for Male Parameter - Length of Stay")+
-  xlab("Sample")+
-  ylab("Value")+
-  scale_color_viridis_d()+
-  theme_bw()
-
-plt_trace_male_los
-
-saveRDS(plt_trace_male_los, file = "Plots/plt_trace_male_los.rds")
-
-
-
-# Rhat
-
-df_param_summary <- draws_post_param|>summarise_draws()|>
-  arrange(.variable,i)
-
-max(df_param_summary$rhat, na.rm = TRUE)
-
-# All Rhat values are below 1.01
-
-
-
-
-### Posterior Predictive
-
-draws_post_reps <- read_parquet("Model_Outputs/draws_post_reps.parquet")
-
-# Statistics of original dataset 
-df_stats_stays<- df_HA_model|> 
-  summarise(`Minimum Number of Stays` = min(Stays), 
-            `Maximum Number of Stays` = max(Stays), 
-            `Median Number of Stays` = median(Stays), 
-            `Skew of Number of Stays` = skewness(Stays))|>
-  pivot_longer(cols = 1:4, names_to = "statistic")
-
-df_stats_los<- df_HA_model|> 
-  summarise(`Minimum Total Length of Stay` = min(TotalLengthofStay), 
-            `Maximum Total Length of Stay` = max(TotalLengthofStay), 
-            `Median Total Length of Stay` = median(TotalLengthofStay), 
-            `Skew of Total Length of Stay` = skewness(TotalLengthofStay))|>
-  pivot_longer(cols = 1:4, names_to = "statistic")
-
-
-# Plot Posterior Predictive Distribution - Number of Stays
-if(!file.exists("Plots/plt_post_pred_sty.rds")){
-  
-  plt_post_pred_sty <- draws_post_reps|>
-    filter(.variable == "rep_stays")|>
-    group_by(.draw)|>
-    summarise(`Minimum Number of Stays` = min(.value), 
-              `Maximum Number of Stays` = max(.value), 
-              `Median Number of Stays` = median(.value), 
-              `Skew of Number of Stays` = skewness(.value))|>
-    pivot_longer(cols = 2:5, names_to = "statistic")|>
-    filter(!(statistic == "Maximum Number of Stays" & value > 60000))|>
-    ggplot(aes(x = value))+
-    geom_histogram(bins = 30, fill = "#440154")+
-    geom_vline(data = df_stats_stays, aes(xintercept = value),col="#5ec962",lwd=2)+
-    facet_wrap(~statistic, nrow=2, scales = "free")+
-    theme_bw()+
-    scale_x_continuous(labels = ~ format(.x, scientific = FALSE))+
-    ggtitle(paste0("Posterior Predictive Number of Stays, Observed Values in Green."))+
-    xlab("Statistic Value")+
-    ylab("Count")
-  
-  # Save Plot
-  saveRDS(plt_post_pred_sty, "Plots/plt_post_pred_sty.rds")
-  
-  
-}else{
-  plt_post_pred_sty <- readRDS("Plots/plt_post_pred_sty.rds")
-}
-
-
-
-
-
-######## Projections #############
-
-admission_levels <- c("Day case", "Elective", "Emergency")
-
-# Load in Data
-draws_post_proj <- read_parquet("Model_Outputs/draws_post_proj.parquet")
-
-df_proj <- read_parquet("Data_Clean/df_proj.parquet")
-
 df_HB <- read_csv("Data_Clean/Health Boards.csv")
 
-df_postcode <- read_csv("Data_Raw/Postcode Index.csv")|>
-  select(CouncilArea2019Code,HealthBoardArea2019Code)|>
-  unique()
-
-# Data Cleaning
 
 
-# Map Council Area to Health Board
-df_CA_HB_map <- read_csv("Data_Clean/Council Areas.csv")|>
-  left_join(df_postcode, by = c("CA" = "CouncilArea2019Code"))|>
-  left_join(df_HB, by = c("HealthBoardArea2019Code"="HB"))|>
-  select(CA_ID, HB_ID)|>
-  filter(!is.na(HB_ID))|>
-  unique()
-
-write_csv(df_CA_HB_map, file = "Data_Clean/df_CA_HB_map.csv")
-
-# Filter to length of stay projections only
-draws_proj_los <- draws_post_proj|>
-  pivot_wider(names_from = .variable, values_from = .value)
-
-# Add HB to projection df and add id column to match draws
-df_proj_draws <- df_proj|>
-  left_join(df_CA_HB_map, by = "CA_ID")|>
-  mutate(i = 1:nrow(df_proj))|>
-  full_join(draws_proj_los, by = "i", multiple="all")|>
-  select(Year, CA_ID, HB_ID,Age,Sex, AdmissionType, 
-         Population, Draw = .draw, LoS = proj_los, NoS= proj_stays_int)
-
-#write_parquet(df_proj_draws, sink = "Model_Outputs/df_proj_draws.parquet")
 
 
-# Overall hospital days
 
-plt_proj_actual <- read_csv("Data_Clean/HA Model Data.csv")|>
-  filter(AdmissionType %in% admission_levels)|>
-  group_by(Year)|>
-  summarise(LoS = sum(TotalLengthofStay))|>
-  ggplot(aes(x = Year, y = LoS))+
-  geom_line()
-
-plt_proj_actual
-
-
-df_los_summ <- df_proj_draws|>
-  group_by(Year, Draw)|>
-  summarise(LoS = sum(LoS)/1000,
-            NoS = sum(NoS)/1000)|>
-  filter(Year>=2023)|>
-  mean_qi(LoS)|>
-  mutate(Variable = "Total Days in Hospital (000s)")|>
-  rename(Mean = LoS)|>
-  select(Year, Variable, Mean, .lower, .upper)
-
-df_stays_summ <- df_proj_draws|>
-  group_by(Year, Draw)|>
-  summarise(LoS = sum(LoS)/1000,
-            NoS = sum(NoS)/1000)|>
-  filter(Year>=2023)|>
-  mean_qi(NoS)|>
-  mutate(Variable = "Number of Hospital Stays (000s)")|>
-  rename(Mean = NoS)|>
-  select(Year, Variable, Mean, .lower, .upper)
-
-df_overall_summ <- bind_rows(df_los_summ, df_stays_summ) 
-
-plt_proj_overall <- df_overall_summ|>
-  ggplot(aes(x = Year, y = Mean, ymin = .lower, ymax = .upper))+
-  geom_lineribbon(colour = "#5ec962", fill = "#440154", alpha = 0.75, lwd = 1)+
-  facet_wrap(~Variable, scales = "free_y",
-             strip.position = "left")+
-  ggtitle("National Hospitalisation Projections")+
-  xlab("Year")+
-  ylab("Total Days in Hospital (000s)")+
-  theme_bw()+
-  ylab(NULL) +
-  theme(strip.background = element_blank(),
-        strip.placement = "outside")
-
-plt_proj_overall
-
-
-saveRDS(plt_proj_overall, "Plots/plt_proj_overall.rds")
-
-
-# Split by Admission Type
-
-df_proj_adm_LoS <- df_proj_draws|>
-  group_by(Year, Draw, AdmissionType)|>
-  summarise(LoS = sum(LoS)/1000,
-            NoS = sum(NoS)/1000, .groups = "keep")|>
-  group_by(Year, AdmissionType)|>
-  filter(Year>=2023)|>
-  mean_qi(LoS)|>
-  mutate(Variable = "Total Days in Hospital (000s)")|>
-  rename(Mean = LoS)|>
-  select(Year, AdmissionType, Variable, Mean, .lower, .upper)
-
-df_proj_adm_NoS <- df_proj_draws|>
-  group_by(Year, Draw, AdmissionType)|>
-  summarise(LoS = sum(LoS)/1000,
-            NoS = sum(NoS)/1000, .groups = "keep")|>
-  group_by(Year, AdmissionType)|>
-  filter(Year>=2023)|>
-  mean_qi(NoS)|>
-  mutate(Variable = "Number of Hospital Stays (000s)")|>
-  rename(Mean = NoS)|>
-  select(Year, AdmissionType, Variable, Mean, .lower, .upper)
-
-df_proj_adm <- bind_rows(df_proj_adm_LoS, df_proj_adm_NoS)
-  
-plt_proj_adm <- df_proj_adm|>
-  ggplot(aes(x = Year, y = Mean, ymin = .lower, ymax = .upper,
-             colour = AdmissionType, fill = AdmissionType))+
-  geom_line(alpha = 0.75, lwd = 1)+
-  facet_wrap(~Variable, scales = "free_y",
-             strip.position = "left")+
-  ggtitle("Hospitalisation Projections by Admission Type")+
-  xlab("Year")+
-  ylab("Total Days in Hospital (000s)")+
-  theme_bw()+
-  scale_fill_viridis_d()+
-  scale_colour_viridis_d()+
-  ylab(NULL) +
-  theme(strip.background = element_blank(),
-        strip.placement = "outside")
-
-plt_proj_adm
-
-saveRDS(plt_proj_adm, "Plots/plt_proj_adm.rds")
-
-
-## Projecting Mean Los
-
-df_mean_los_proj_adm <- df_proj_draws|>
-  group_by(Year, Draw, AdmissionType)|>
-  summarise(LoS = sum(LoS),
-            NoS = sum(NoS), .groups = "keep")|>
-  group_by(Year, AdmissionType)|>
-  filter(Year>=2023)|>
-  mean_qi(LoS, NoS)|>
-  select(Year, AdmissionType, LoS, NoS)
-
-df_mean_los_proj <- df_proj_draws|>
-  group_by(Year, Draw)|>
-  summarise(LoS = sum(LoS),
-            NoS = sum(NoS), .groups = "keep")|>
-  group_by(Year)|>
-  filter(Year>=2023)|>
-  mean_qi(LoS, NoS)|>
-  select(Year,LoS, NoS)|>
-  mutate(AdmissionType = "Overall")
-
-plt_mean_los <- bind_rows(df_mean_los_proj, df_mean_los_proj_adm)|>
-  mutate(`Mean Length of Stay (Days)` = LoS / NoS,
-         `Admission Type` = AdmissionType)|>
-  ggplot(aes(x = Year, y = `Mean Length of Stay (Days)`, colour = `Admission Type`))+
-  geom_line(lwd = 1.2)+
-  theme_bw()+
-  scale_colour_viridis_d()+
-  ggtitle("Length of Hospital Stay Projections")
-
-
-plt_mean_los
-
-saveRDS(plt_mean_los,"Plots/plt_mean_los.rds")
-  
-
-
-# Split by Health Board
-
-# Mapping Council Area Boundaries
-df_HB_boundaries_raw <- st_read("Data_Raw/Health Boards Spatial")
-
-df_HB_boundaries <- df_HB_boundaries_raw|>
-  left_join(df_HB, by = c("HBCode" = "HB") )|>
-  select(HBName = HBName.x, HB_ID, geometry)|>
-  arrange(HBName)
-
-# saveRDS(df_HB_boundaries, file = "Data_Clean/HB Boundaries.csv")
-# df_HB_boundaries <- read_csv("Data_Clean/HB Boundaries.csv"))
-
-
-df_los_HB_2023 <- df_proj_draws|>
-  group_by(Year, Draw, HB_ID)|>
-  summarise(LoS = sum(LoS)/1000, .groups = "keep")|>
-  group_by(Year, HB_ID)|>
-  filter(Year == 2023)|>
-  mean_qi(LoS)|>
-  select(HB_ID, LoS)
-
-df_los_HB_frac <- df_proj_draws|>
-  group_by(Year, Draw, HB_ID)|>
-  summarise(LoS = sum(LoS)/1000, .groups = "keep")|>
-  group_by(Year, HB_ID)|>
-  filter(Year %in% c(2033,2043))|>
-  mean_qi(LoS)|>
-  left_join(df_los_HB_2023, by = "HB_ID")|>
-  select(Year, HB_ID, LoS = LoS.x, LoS_2023 = LoS.y)|>
-  mutate(`Increase (%)` = (LoS / LoS_2023 -1) *100)
-
-
-plt_proj_HB <- df_los_HB_frac|> 
-  left_join(df_HB_boundaries, by = "HB_ID")|>
-  ggplot() + 
-  geom_sf(aes(geometry = geometry,fill = `Increase (%)`)) + 
-  coord_sf()+
-  facet_wrap(~Year)+
-  theme_bw()+
-  scale_fill_viridis_c()+
-  ggtitle("Percentage Increase of Days in Hospital \nby Health Board")+
-  theme(axis.line = element_blank(),
-        panel.grid.major = element_blank(),
-        panel.grid.minor = element_blank(),
-        panel.border = element_blank(),
-        axis.text.x=element_blank(),
-        axis.text.y=element_blank(),
-        axis.ticks=element_blank())
-
-
-plt_proj_HB
-
-
-saveRDS(plt_proj_HB, "Plots/plt_proj_HB.rds")
-
-
-df_mean_los_HB_2023 <- df_proj_draws|>
-  group_by(Year, Draw, HB_ID)|>
-  summarise(LoS = sum(LoS), NoS = sum(NoS), .groups = "keep")|>
-  group_by(Year, HB_ID)|>
-  filter(Year %in% c(2023))|>
-  mean_qi(LoS, NoS)|>
-  select(HB_ID, LoS, NoS)|>
-  mutate(mean_los = LoS / NoS)
-
-df_mean_los_HB_frac <- df_proj_draws|>
-  group_by(Year, Draw, HB_ID)|>
-  summarise(LoS = sum(LoS), NoS = sum(NoS), .groups = "keep")|>
-  group_by(Year, HB_ID)|>
-  filter(Year %in% c(2033,2043))|>
-  mean_qi(LoS,NoS)|>
-  mutate(mean_los = LoS / NoS)|>
-  left_join(df_mean_los_HB_2023, by = "HB_ID")|>
-  select(Year = Year.x, HB_ID, mean_los = mean_los.x, mean_los_2023 = mean_los.y)|>
-  mutate(`Increase (%)` = (mean_los / mean_los_2023 -1) *100)
-
-
-plt_proj_los_HB <- df_mean_los_HB_frac|> 
-  left_join(df_HB_boundaries, by = "HB_ID")|>
-  ggplot() + 
-  geom_sf(aes(geometry = geometry,fill = `Increase (%)`)) + 
-  coord_sf()+
-  facet_wrap(~Year)+
-  theme_bw()+
-  scale_fill_viridis_c()+
-  ggtitle("Percentage Increase of Length of Stay \nby Health Board")+
-  theme(axis.line = element_blank(),
-        panel.grid.major = element_blank(),
-        panel.grid.minor = element_blank(),
-        panel.border = element_blank(),
-        axis.text.x=element_blank(),
-        axis.text.y=element_blank(),
-        axis.ticks=element_blank())
-
-plt_proj_los_HB
-
-saveRDS(plt_proj_los_HB, "Plots/plt_proj_los_HB.rds")
-
-############## Population Projections
+########## Section 1: Population Projections ##########
 
 
 # Age factor levels
@@ -566,7 +61,7 @@ df_CA <- read_csv("Data_Clean/Council Areas.csv")
 
 
 
-########## Data Preparation ##########
+##### Data Preparation 
 
 # Mapping Council Area Boundaries
 df_CA_boundaries_raw <- st_read("Data_Raw/Local Authorities Spatial")
@@ -641,7 +136,7 @@ df_pop_changes <- df_CA_proj|>
   mutate(`Percentage Change` = (Population / Population_2023 - 1)*100)
 
 
-########## Plots ##########
+#### Plots
 
 # Projected Total Population 
 plt_proj_total <- df_CA_proj|>
@@ -657,7 +152,7 @@ plt_proj_total <- df_CA_proj|>
 
 plt_proj_total
 
-saveRDS(plt_proj_total, file = "Plots/plt_proj_total.rds")
+#saveRDS(plt_proj_total, file = "Plots/plt_proj_total.rds")
 
 # Population Over 65 and 80
 plt_pop_65_80 <- df_perc_65_total|>
@@ -678,7 +173,7 @@ plt_pop_65_80 <- df_perc_65_total|>
 
 plt_pop_65_80
 
-saveRDS(plt_pop_65_80, file = "Plots/plt_pop_65_80.rds")
+#saveRDS(plt_pop_65_80, file = "Plots/plt_pop_65_80.rds")
 
 
 # Projected Percentage Over 65 / 80
@@ -701,7 +196,7 @@ plt_perc_65_80 <- df_perc_65_total|>
 
 plt_perc_65_80
 
-saveRDS(plt_perc_65_80, file = "Plots/plt_perc_65_80.rds")
+#saveRDS(plt_perc_65_80, file = "Plots/plt_perc_65_80.rds")
 
 
 # Plot Population Changes
@@ -725,7 +220,7 @@ plt_pop_change_CA <- df_pop_changes|>
 
 plt_pop_change_CA
 
-saveRDS(plt_pop_change_CA, file = "Plots/plt_pop_change_CA.rds")
+#saveRDS(plt_pop_change_CA, file = "Plots/plt_pop_change_CA.rds")
 
 
 # df_CA_unique <- df_CA|>
@@ -760,7 +255,7 @@ plt_perc_65_CA <- df_perc_65_CA|>
 
 plt_perc_65_CA
 
-saveRDS(plt_perc_65_CA, file = "Plots/plt_perc_65_CA.rds")
+#saveRDS(plt_perc_65_CA, file = "Plots/plt_perc_65_CA.rds")
 
 
 
@@ -785,13 +280,20 @@ plt_perc_80_CA <- df_perc_80_CA|>
 
 plt_perc_80_CA
 
-saveRDS(plt_perc_80_CA, file = "Plots/plt_perc_80_CA.rds")
+#saveRDS(plt_perc_80_CA, file = "Plots/plt_perc_80_CA.rds")
 
 
 
 
 
-##### Predict Hospitalisation
+
+
+
+
+
+
+
+########## Section 2: Factors Affecting Hospitalisation ##########
 
 
 # Load in Data
@@ -844,7 +346,7 @@ plt_hosp_age_total <- df_hosp_age_total|>
 plt_hosp_age_total
 
 
-saveRDS(plt_hosp_age_total, file = "Plots/plt_hosp_age_total.rds")
+#saveRDS(plt_hosp_age_total, file = "Plots/plt_hosp_age_total.rds")
 
 
 
@@ -891,7 +393,7 @@ plt_hosp_age_adm <- df_hosp_age_adm|>
 plt_hosp_age_adm
 
 
-saveRDS(plt_hosp_age_adm, file = "Plots/plt_hosp_age_adm.rds")
+#saveRDS(plt_hosp_age_adm, file = "Plots/plt_hosp_age_adm.rds")
 
 
 
@@ -985,12 +487,7 @@ plt_summary_geo <- df_summary_geo|>
 
 plt_summary_geo
 
-saveRDS(plt_summary_geo, file = "Plots/plt_summary_geo.rds")
-
-
-
-
-
+#saveRDS(plt_summary_geo, file = "Plots/plt_summary_geo.rds")
 
 
 
@@ -1089,4 +586,449 @@ plt_summary_geo <- df_summary_geo|>
 
 plt_summary_geo
 
-saveRDS(plt_summary_geo, file = "Plots/plt_summary_geo.rds")
+#saveRDS(plt_summary_geo, file = "Plots/plt_summary_geo.rds")
+
+
+
+
+
+
+
+
+
+
+
+
+
+########## Section 3: Hospitalisation Projections ##########
+
+admission_levels <- c("Day case", "Elective", "Emergency")
+
+# Load in Data
+draws_post_proj <- read_parquet("Model_Outputs/draws_post_proj.parquet")
+
+df_proj <- read_parquet("Data_Clean/df_proj.parquet")
+
+df_postcode <- read_csv("Data_Raw/Postcode Index.csv")|>
+  select(CouncilArea2019Code,HealthBoardArea2019Code)|>
+  unique()
+
+# Data Cleaning
+
+
+# Map Council Area to Health Board
+df_CA_HB_map <- read_csv("Data_Clean/Council Areas.csv")|>
+  left_join(df_postcode, by = c("CA" = "CouncilArea2019Code"))|>
+  left_join(df_HB, by = c("HealthBoardArea2019Code"="HB"))|>
+  select(CA_ID, HB_ID)|>
+  filter(!is.na(HB_ID))|>
+  unique()
+
+#write_csv(df_CA_HB_map, file = "Data_Clean/df_CA_HB_map.csv")
+
+# Filter to length of stay projections only
+draws_proj_los <- draws_post_proj|>
+  pivot_wider(names_from = .variable, values_from = .value)
+
+# Add HB to projection df and add id column to match draws
+df_proj_draws <- df_proj|>
+  left_join(df_CA_HB_map, by = "CA_ID")|>
+  mutate(i = 1:nrow(df_proj))|>
+  full_join(draws_proj_los, by = "i", multiple="all")|>
+  select(Year, CA_ID, HB_ID,Age,Sex, AdmissionType, 
+         Population, Draw = .draw, LoS = proj_los, NoS= proj_stays_int)
+
+#write_parquet(df_proj_draws, sink = "Model_Outputs/df_proj_draws.parquet")
+
+
+# Overall hospital days
+
+plt_proj_actual <- read_csv("Data_Clean/HA Model Data.csv")|>
+  filter(AdmissionType %in% admission_levels)|>
+  group_by(Year)|>
+  summarise(LoS = sum(TotalLengthofStay))|>
+  ggplot(aes(x = Year, y = LoS))+
+  geom_line()
+
+plt_proj_actual
+
+
+df_los_summ <- df_proj_draws|>
+  group_by(Year, Draw)|>
+  summarise(LoS = sum(LoS)/1000,
+            NoS = sum(NoS)/1000)|>
+  filter(Year>=2023)|>
+  mean_qi(LoS)|>
+  mutate(Variable = "Total Days in Hospital (000s)")|>
+  rename(Mean = LoS)|>
+  select(Year, Variable, Mean, .lower, .upper)
+
+df_stays_summ <- df_proj_draws|>
+  group_by(Year, Draw)|>
+  summarise(LoS = sum(LoS)/1000,
+            NoS = sum(NoS)/1000)|>
+  filter(Year>=2023)|>
+  mean_qi(NoS)|>
+  mutate(Variable = "Number of Hospital Stays (000s)")|>
+  rename(Mean = NoS)|>
+  select(Year, Variable, Mean, .lower, .upper)
+
+df_overall_summ <- bind_rows(df_los_summ, df_stays_summ) 
+
+plt_proj_overall <- df_overall_summ|>
+  ggplot(aes(x = Year, y = Mean, ymin = .lower, ymax = .upper))+
+  geom_lineribbon(colour = "#5ec962", fill = "#440154", alpha = 0.75, lwd = 1)+
+  facet_wrap(~Variable, scales = "free_y",
+             strip.position = "left")+
+  ggtitle("National Hospitalisation Projections")+
+  xlab("Year")+
+  ylab("Total Days in Hospital (000s)")+
+  theme_bw()+
+  ylab(NULL) +
+  theme(strip.background = element_blank(),
+        strip.placement = "outside")
+
+plt_proj_overall
+
+
+#saveRDS(plt_proj_overall, "Plots/plt_proj_overall.rds")
+
+
+# Split by Admission Type
+
+df_proj_adm_LoS <- df_proj_draws|>
+  group_by(Year, Draw, AdmissionType)|>
+  summarise(LoS = sum(LoS)/1000,
+            NoS = sum(NoS)/1000, .groups = "keep")|>
+  group_by(Year, AdmissionType)|>
+  filter(Year>=2023)|>
+  mean_qi(LoS)|>
+  mutate(Variable = "Total Days in Hospital (000s)")|>
+  rename(Mean = LoS)|>
+  select(Year, AdmissionType, Variable, Mean, .lower, .upper)
+
+df_proj_adm_NoS <- df_proj_draws|>
+  group_by(Year, Draw, AdmissionType)|>
+  summarise(LoS = sum(LoS)/1000,
+            NoS = sum(NoS)/1000, .groups = "keep")|>
+  group_by(Year, AdmissionType)|>
+  filter(Year>=2023)|>
+  mean_qi(NoS)|>
+  mutate(Variable = "Number of Hospital Stays (000s)")|>
+  rename(Mean = NoS)|>
+  select(Year, AdmissionType, Variable, Mean, .lower, .upper)
+
+df_proj_adm <- bind_rows(df_proj_adm_LoS, df_proj_adm_NoS)
+  
+plt_proj_adm <- df_proj_adm|>
+  ggplot(aes(x = Year, y = Mean, ymin = .lower, ymax = .upper,
+             colour = AdmissionType, fill = AdmissionType))+
+  geom_line(alpha = 0.75, lwd = 1)+
+  facet_wrap(~Variable, scales = "free_y",
+             strip.position = "left")+
+  ggtitle("Hospitalisation Projections by Admission Type")+
+  xlab("Year")+
+  ylab("Total Days in Hospital (000s)")+
+  theme_bw()+
+  scale_fill_viridis_d()+
+  scale_colour_viridis_d()+
+  ylab(NULL) +
+  theme(strip.background = element_blank(),
+        strip.placement = "outside")
+
+plt_proj_adm
+
+#saveRDS(plt_proj_adm, "Plots/plt_proj_adm.rds")
+
+
+## Projecting Mean Los
+
+df_mean_los_proj_adm <- df_proj_draws|>
+  group_by(Year, Draw, AdmissionType)|>
+  summarise(LoS = sum(LoS),
+            NoS = sum(NoS), .groups = "keep")|>
+  group_by(Year, AdmissionType)|>
+  filter(Year>=2023)|>
+  mean_qi(LoS, NoS)|>
+  select(Year, AdmissionType, LoS, NoS)
+
+df_mean_los_proj <- df_proj_draws|>
+  group_by(Year, Draw)|>
+  summarise(LoS = sum(LoS),
+            NoS = sum(NoS), .groups = "keep")|>
+  group_by(Year)|>
+  filter(Year>=2023)|>
+  mean_qi(LoS, NoS)|>
+  select(Year,LoS, NoS)|>
+  mutate(AdmissionType = "Overall")
+
+plt_mean_los <- bind_rows(df_mean_los_proj, df_mean_los_proj_adm)|>
+  mutate(`Mean Length of Stay (Days)` = LoS / NoS,
+         `Admission Type` = AdmissionType)|>
+  ggplot(aes(x = Year, y = `Mean Length of Stay (Days)`, colour = `Admission Type`))+
+  geom_line(lwd = 1.2)+
+  theme_bw()+
+  scale_colour_viridis_d()+
+  ggtitle("Length of Hospital Stay Projections")
+
+
+plt_mean_los
+
+#saveRDS(plt_mean_los,"Plots/plt_mean_los.rds")
+  
+
+
+# Split by Health Board
+
+# Mapping Council Area Boundaries
+df_HB_boundaries_raw <- st_read("Data_Raw/Health Boards Spatial")
+
+df_HB_boundaries <- df_HB_boundaries_raw|>
+  left_join(df_HB, by = c("HBCode" = "HB") )|>
+  select(HBName = HBName.x, HB_ID, geometry)|>
+  arrange(HBName)
+
+# saveRDS(df_HB_boundaries, file = "Data_Clean/HB Boundaries.csv")
+# df_HB_boundaries <- read_csv("Data_Clean/HB Boundaries.csv"))
+
+
+df_los_HB_2023 <- df_proj_draws|>
+  group_by(Year, Draw, HB_ID)|>
+  summarise(LoS = sum(LoS)/1000, .groups = "keep")|>
+  group_by(Year, HB_ID)|>
+  filter(Year == 2023)|>
+  mean_qi(LoS)|>
+  select(HB_ID, LoS)
+
+df_los_HB_frac <- df_proj_draws|>
+  group_by(Year, Draw, HB_ID)|>
+  summarise(LoS = sum(LoS)/1000, .groups = "keep")|>
+  group_by(Year, HB_ID)|>
+  filter(Year %in% c(2033,2043))|>
+  mean_qi(LoS)|>
+  left_join(df_los_HB_2023, by = "HB_ID")|>
+  select(Year, HB_ID, LoS = LoS.x, LoS_2023 = LoS.y)|>
+  mutate(`Increase (%)` = (LoS / LoS_2023 -1) *100)
+
+
+plt_proj_HB <- df_los_HB_frac|> 
+  left_join(df_HB_boundaries, by = "HB_ID")|>
+  ggplot() + 
+  geom_sf(aes(geometry = geometry,fill = `Increase (%)`)) + 
+  coord_sf()+
+  facet_wrap(~Year)+
+  theme_bw()+
+  scale_fill_viridis_c()+
+  ggtitle("Percentage Increase of Days in Hospital \nby Health Board")+
+  theme(axis.line = element_blank(),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        panel.border = element_blank(),
+        axis.text.x=element_blank(),
+        axis.text.y=element_blank(),
+        axis.ticks=element_blank())
+
+
+plt_proj_HB
+
+
+#saveRDS(plt_proj_HB, "Plots/plt_proj_HB.rds")
+
+
+df_mean_los_HB_2023 <- df_proj_draws|>
+  group_by(Year, Draw, HB_ID)|>
+  summarise(LoS = sum(LoS), NoS = sum(NoS), .groups = "keep")|>
+  group_by(Year, HB_ID)|>
+  filter(Year %in% c(2023))|>
+  mean_qi(LoS, NoS)|>
+  select(HB_ID, LoS, NoS)|>
+  mutate(mean_los = LoS / NoS)
+
+df_mean_los_HB_frac <- df_proj_draws|>
+  group_by(Year, Draw, HB_ID)|>
+  summarise(LoS = sum(LoS), NoS = sum(NoS), .groups = "keep")|>
+  group_by(Year, HB_ID)|>
+  filter(Year %in% c(2033,2043))|>
+  mean_qi(LoS,NoS)|>
+  mutate(mean_los = LoS / NoS)|>
+  left_join(df_mean_los_HB_2023, by = "HB_ID")|>
+  select(Year = Year.x, HB_ID, mean_los = mean_los.x, mean_los_2023 = mean_los.y)|>
+  mutate(`Increase (%)` = (mean_los / mean_los_2023 -1) *100)
+
+
+plt_proj_los_HB <- df_mean_los_HB_frac|> 
+  left_join(df_HB_boundaries, by = "HB_ID")|>
+  ggplot() + 
+  geom_sf(aes(geometry = geometry,fill = `Increase (%)`)) + 
+  coord_sf()+
+  facet_wrap(~Year)+
+  theme_bw()+
+  scale_fill_viridis_c()+
+  ggtitle("Percentage Increase of Length of Stay \nby Health Board")+
+  theme(axis.line = element_blank(),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        panel.border = element_blank(),
+        axis.text.x=element_blank(),
+        axis.text.y=element_blank(),
+        axis.ticks=element_blank())
+
+plt_proj_los_HB
+
+#saveRDS(plt_proj_los_HB, "Plots/plt_proj_los_HB.rds")
+
+
+
+
+
+
+
+
+########## Appendix B: Diagnostic Plots ##########
+
+# Load in Parameter Data
+draws_post_param <- read_parquet("Model_Outputs/draws_post_param.parquet")
+
+
+# Admission Type Trace Plot - Stays
+plt_trace_adm_sty <- draws_post_param|>
+  filter(.variable == "b_adm_sty")|>
+  mutate(.chain = as.factor(.chain),
+         adm_type = admission_levels[i])|>
+  rename(Chain = .chain)|>
+  ggplot(aes(x = .iteration, y = .value, colour = Chain))+
+  geom_line()+
+  facet_wrap(~adm_type, scales = "free_y", nrow = 3)+
+  ggtitle("Trace Plot for Admission Type Parameters - Number of Stays")+
+  xlab("Sample")+
+  ylab("Value")+
+  scale_color_viridis_d()+
+  theme_bw()
+
+plt_trace_adm_sty
+
+
+#saveRDS(plt_trace_adm_sty, file = "Plots/plt_trace_adm_sty.rds")
+
+
+
+
+# Age Trace Plot - Stays
+plt_trace_age_sty <- draws_post_param|>
+  filter(.variable == "b_age_sty")|>
+  mutate(.chain = as.factor(.chain),
+         age = age_levels[i],
+         age = if_else(age=="90 years and over","90 years +",age))|>
+  rename(Chain = .chain)|>
+  ggplot(aes(x = .iteration, y = .value, colour = Chain))+
+  geom_line()+
+  facet_wrap(~age, scales = "free_y", nrow = 6)+
+  ggtitle("Trace Plot for Age Parameters - Number of Stays")+
+  xlab("Sample")+
+  ylab("Value")+
+  scale_color_viridis_d()+
+  theme_bw()+
+  theme(axis.text.x = element_text(angle = 45,size = 8),
+        axis.text.y = element_text(size = 8))+
+  scale_y_continuous(labels = function(x) round(x,2))
+
+plt_trace_age_sty
+
+#saveRDS(plt_trace_age_sty, file = "Plots/plt_trace_age_sty.rds")
+
+
+# Sex Trace Plot - Stays
+plt_trace_male_sty <- draws_post_param|>
+  filter(.variable == "b_male_sty")|>
+  mutate(.chain = as.factor(.chain))|>
+  rename(Chain = .chain)|>
+  ggplot(aes(x = .iteration, y = .value, colour = Chain))+
+  geom_line()+
+  ggtitle("Trace Plot for Male Parameter - Number of Stays")+
+  xlab("Sample")+
+  ylab("Value")+
+  scale_color_viridis_d()+
+  theme_bw()
+
+plt_trace_male_sty
+
+#saveRDS(plt_trace_male_sty, file = "Plots/plt_trace_male_sty.rds")
+
+### Length of Stay Parameter
+
+# Admission Type Trace Plot - Length of Stay
+plt_trace_adm_los <- draws_post_param|>
+  filter(.variable == "b_adm_los")|>
+  mutate(.chain = as.factor(.chain),
+         adm_type = admission_levels[i])|>
+  rename(Chain = .chain)|>
+  ggplot(aes(x = .iteration, y = .value, colour = Chain))+
+  geom_line()+
+  facet_wrap(~adm_type, scales = "free_y", nrow = 3)+
+  ggtitle("Trace Plot for Admission Type Parameters - Length of Stay")+
+  xlab("Sample")+
+  ylab("Value")+
+  scale_color_viridis_d()+
+  theme_bw()
+
+plt_trace_adm_los
+
+
+#saveRDS(plt_trace_adm_los, file = "Plots/plt_trace_adm_los.rds")
+
+
+
+
+# Age Trace Plot - Length of Stay
+plt_trace_age_los <- draws_post_param|>
+  filter(.variable == "b_age_los")|>
+  mutate(.chain = as.factor(.chain),
+         age = age_levels[i],
+         age = if_else(age=="90 years and over","90 years +",age))|>
+  rename(Chain = .chain)|>
+  ggplot(aes(x = .iteration, y = .value, colour = Chain))+
+  geom_line()+
+  facet_wrap(~age, scales = "free_y", nrow = 6)+
+  ggtitle("Trace Plot for Age Parameters - Length of Stay")+
+  xlab("Sample")+
+  ylab("Value")+
+  scale_color_viridis_d()+
+  theme_bw()+
+  theme(axis.text.x = element_text(angle = 45,size = 8),
+        axis.text.y = element_text(size = 8))+
+  scale_y_continuous(labels = function(x) round(x,2))
+
+plt_trace_age_los
+
+#saveRDS(plt_trace_age_los, file = "Plots/plt_trace_age_los.rds")
+
+
+# Sex Trace Plot - Length of Stay
+plt_trace_male_los <- draws_post_param|>
+  filter(.variable == "b_male_los")|>
+  mutate(.chain = as.factor(.chain))|>
+  rename(Chain = .chain)|>
+  ggplot(aes(x = .iteration, y = .value, colour = Chain))+
+  geom_line()+
+  ggtitle("Trace Plot for Male Parameter - Length of Stay")+
+  xlab("Sample")+
+  ylab("Value")+
+  scale_color_viridis_d()+
+  theme_bw()
+
+plt_trace_male_los
+
+#saveRDS(plt_trace_male_los, file = "Plots/plt_trace_male_los.rds")
+
+
+
+# Rhat
+
+df_param_summary <- draws_post_param|>summarise_draws()|>
+  arrange(.variable,i)
+
+max(df_param_summary$rhat, na.rm = TRUE)
+
+# All Rhat values are below 1.01
+
+
