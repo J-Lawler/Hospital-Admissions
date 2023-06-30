@@ -1,0 +1,673 @@
+---
+output:
+  bookdown::pdf_document2:
+    template: my-template.tex
+    toc: true
+    toc_depth: 2
+    number_sections: true
+geometry: margin = 0.8in
+bibliography: "references.bib"
+csl: "vancouver-brackets.csl"
+---
+
+```{r echo = FALSE, warning=FALSE, message=FALSE}
+library(gridExtra)
+```
+
+# Own Work Declaration {-}
+
+I confirm that all this work is my own except where indicated, and that I have:
+
+*	Clearly referenced/listed all sources as appropriate	 				
+*	Referenced and put in inverted commas all quoted text (from books, web, etc)	
+*	Given the sources of all pictures, data etc. that are not my own				
+*	Not made any use of the report(s) or essay(s) of any other student(s) either past or present	
+*	Not sought or used the help of any external professional academic agencies for the work
+*	Acknowledged in appropriate places any help that I have received from others	(e.g. fellow students, technicians, statisticians, external sources)
+*	Complied with any other plagiarism criteria specified in the Course handbook
+
+
+I understand that any false claim for this work will be penalised in accordance with [the University regulations](https://teaching.maths.ed.ac.uk/main/msc-students/msc-programmes/statistics/data-science/assessment/academic-misconduct).								
+
+Signature ............................
+
+Date ............................
+
+
+# Executive Summary {-}
+
+Due to a significant decline in mortality among older ages over the past 50 years, along with lower birth rates, many developed countries have an ageing population [@rechel_ageing_2013]. Scotland is no exception, with the population aged 75 and over expected to increase by 25% between 2018 and 2028 [@douglas_healthy_2017; @team_national_2018].
+
+In addition, in 2030 the generation born in the period of high birth rates following the Second World War will be aged between 66 and 84. The increasing age of this large cohort has implications for the social care, pensions, and health care systems, among many others. The scale of the '2030 problem' has been debated across the developed world for several decades now [@knickman_2030_2002; @song_baby_2018; @robson_will_2001], and Scotland's national charity for older people Age Scotland has raised concerned about insufficient preparation to meet the challenge [@noauthor_age_nodate].     
+
+One area of concern is hospital capacity. Both the number of hospital stays and the length of any given stay increase on average with age. An ageing population therefore has potential to strain existing hospital capacity.
+
+This report aims to project the capacity required as Scotland's population ages over the next 20 years. It does this by combining population projections from the National Records of Scotland [@team_national_2018] with a model of hospitalisation rate, and length of stay based data from the 10 years to 2021. The model takes into account age, sex and geographic location, as well as admission type.
+
+Section 1 aims to illustrate the way Scotland's population is anticipated to change through 2043, while Section 2 discusses how factors like age, sex and geographic location predict rate of hospitalisation and length of stay in hospital. These two topics are combined in Section 3, where projections of hospital demand are made, with a particular focus on the level of the Health Board. Section 4 discusses some limitations with the analysis presented.
+
+The results forecast an increase in demand for hospital beds as the baby boomer cohort ages, and suggest that demand will not slow until after 2043. However, an important implication of the results below is that national-level projections are inappropriate for resource planning at the health board level. Local changes in expected population and population age structure must be accounted for in any model of future NHS resource demands.
+
+All code is available at [https://github.com/J-Lawler/Hospital-Admissions](https://github.com/J-Lawler/Hospital-Admissions).
+
+
+# Population Projections
+
+In this section we examine how Scotland's population is expected to change through 2043. We do this by exploring projections published in 2018 by the National Records of Scotland [@national_records_of_scotland_population_2020].
+
+## Future Population Changes
+
+The headline result from the projections is that Scotland's population is expected to increase through 2043, however the rate of increase begins to slow after 2035, becoming relatively flat around 2040. The projections even include a slight decrease in population in the final year. This is illustrated in Figure \@ref(fig:plt-proj-total) below.
+
+```{r plt-proj-total, fig.cap="Projecting Scotland's Population Through 2043.", echo = FALSE}
+
+plt_proj_total <- readRDS(file = "Plots/plt_proj_total.rds")
+
+plt_proj_total
+```
+
+However the population increase is not experienced uniformly across Scotland. In fact, 14 of Scotland's 32 council areas are expect to experience a decline in population by 2043. Figure \@ref(fig:plt-pop-change-CA) maps the expected changes. 
+
+The population increases are concentrated in the central belt, with the largest percentage increases occurring in Midlothian, East Lothian, East Renfrewshire, and the City of Edinburgh. Somewhat surprisingly, the council area expected to experience the largest population decrease (by percentage) is Inverclyde at 13% by 2043. Argyll and Bute and the Outer Hebrides are projected for similar decreases.
+
+This differentiated population change has implications for the later projections for hospital demand by health board.
+
+```{r plt-pop-change-CA, fig.cap="Projecting Population Change by Council Area.", echo = FALSE}
+
+plt_pop_change_CA <- readRDS(file = "Plots/plt_pop_change_CA.rds")
+
+plt_pop_change_CA
+```
+
+## Changing Age Structure
+
+Along with total population changes, the age structure of the population is also expected to change over the next 20 years. In particular, the percentage of the population over the age of 65 is expected to increase as the youngest baby boomers reach that mark by the end of the decade.
+
+The projected percentages of the national population over ages 65 and 80 are plotted in Figure \@ref(fig:plt-perc-65-80). The percentage over 65 begins to flatten at around 25% of the population by the second half of the 2030s. The percentage over 80 continues to increase over the entire range of the projections. The youngest baby boomers will not reach 80 until 2045, and one in 12 people in Scotland are projected to be over 80 by 2043.
+
+```{r plt-perc-65-80, fig.cap="Projected Share of Population Over 65 and 80.", echo = FALSE}
+
+plt_perc_65_80 <- readRDS(file = "Plots/plt_perc_65_80.rds")
+
+plt_perc_65_80
+```
+
+As with the overall population changes, the changes in age structure will differ by area. Figure \@ref(fig:plt-perc-65-CA) illustrates the expected percentage of the population over 65 and over 80 now and over the next 20 years, split by council area. 
+
+The difference in age profile between the oldest and youngest council areas is expected to widen. In 2023 14% of Glasgow residents are over 65, and this is expected to increase to 18% by 2043. Argyll and Bute has one of the oldest populations now, and the expected increase is larger: from 28% to 35%. A similar pattern occurs for over 80s, with rural areas ageing and Glasgow, Aberdeen, Dundee and Edinburgh remaining young.
+
+
+```{r plt-perc-65-CA, fig.cap="Projected Age Structure by Council Area.", echo = FALSE}
+
+plt_perc_65_CA <- readRDS(file = "Plots/plt_perc_65_CA.rds")
+
+plt_perc_80_CA <- readRDS(file = "Plots/plt_perc_80_CA.rds")
+
+grid.arrange(plt_perc_65_CA,plt_perc_80_CA, ncol=1)
+
+```
+
+As with overall population changes, the variation in age structure changes by area will have implications for the projections performed in Section 3.
+
+# Risk Factors for Hospitalisation
+
+The preceding section aims to provide a picture of the changing population and age structure of Scotland from now until 2043. This section aims to understand how those changes might relate to demand for hospital beds. This section explores how age and geographic area predict both the rate of hospitalisation, and the length of each hospital stay.
+
+## Age
+
+The data used to illustrate the effect of age on hospitalisation comes from Public Health Scotland[@public_health_scotland_annual_nodate], and is described in Appendix A (Activity by Council Area, Age and Sex).
+
+Figure \@ref(fig:plt-hosp-age-total) is stark: both the number of hospital stays per 1,000 people and the length of any given stay increase dramatically with age, particularly after age 65. Aside from the number of hospital stays in infancy (likely in the first year of life), the increase in both charts is almost monotonic.
+
+```{r plt-hosp-age-total, fig.cap="Effect of Age on Frequency and Length of Hospitalisation.", echo = FALSE}
+
+plt_hosp_age_total <- readRDS(file = "Plots/plt_hosp_age_total.rds")
+
+plt_hosp_age_total
+```
+
+Figure \@ref(fig:plt-hosp-age-adm) breaks down the relationship by admission type. We see that most of the increase in hospitalisation at older ages is driven by emergency admission, with a secondary contribution from day cases (though these appear to decline after age 80). The steep increase in the average length of a hospital stay at older ages appears to be driven by two factors:
+
+1. Emergency admissions have the longest length of stay for most ages, and the proportion of admissions for emergencies increases with age.
+2. For a given admission type (emergency or elective) length of stay increases with age.
+
+Day cases by their nature have a length of stay of less than one day, and this is often rounded down to 0 in the data source, hence the horizontal line at zero for the length of stay figure.
+
+```{r plt-hosp-age-adm, fig.cap="Effect of Age by Admission Type.", echo = FALSE}
+
+plt_hosp_age_adm <- readRDS(file = "Plots/plt_hosp_age_adm.rds")
+
+plt_hosp_age_adm
+```
+
+Taken together, these charts indicate some of the challenges to hospital capacity posed by an ageing population, and this will be explored further as part of the projections in Section 3.
+
+## Geographical Factors
+
+In this section, we explore geographic area as a risk factor for hospitalisation. Geographic area (in this case council area) is not proposed as a direct cause of good or ill health, rather the differences are likely to reflect factors that correlate with area. Some candidates may include socioeconomic status, or environmental or lifestyle factors.
+
+As seen in Section 1, the various council areas in Scotland have very different age structures. However in this section we aim to exclude the effect of age. Figure \@ref(fig:plt_summary_geo) does not illustrate actual hospitalisation rates and lengths of stay. Instead it displays estimates of what the hospitalisation rates would be if every council area had the same population and age structure: the national age structure of Scotland. In this way the effect of geography (or rather the factors correlated with geography described above) can be illustrated. This exercise is made possible by, and relies on the assumptions made by, the hospitalisation models introduced in Section 3 and explained in detail in Appendix B.  
+
+The areas associated with a higher rate of hospitalisation are located close to Glasgow: West Dunbartonshire, Glasgow City, and North Lanarkshire. The lowest rates are found in Perth and Kinross, Angus and Stirling. The mean length of any given hospital stay is much less differentiated by geography.
+
+```{r plt-summary-geo, fig.cap="Relationship Between Council Area and Hospitalisation.", echo = FALSE}
+
+plt_summary_geo <- readRDS(file = "Plots/plt_summary_geo.rds")
+
+plt_summary_geo
+```
+
+The combined effect of geographic variation in projected population growth and hospitalisation rates will be illustrated in the hospitalisation projections conducted in the next section.
+
+# Hospitalisation Projections
+
+Combining the hospitalisation model and population projections above, we can predict demand of healthcare resources over the next 20 years, as Scotland's population grows and ages. 
+
+The two parts of the hospitalisation model are combined to generate predictions. First, the projected population is stratified by year, age, sex and council area. Then the number of stays for a given population stratum is drawn from the following Poisson distribution, where each $\beta^S$ parameter is sampled from the model posterior^[Further model details, including priors and parameter descriptions, are provided in Appendix B]. This is repeated 500 times, to allow for the projections to include all the uncertainty in the model's projected number of stays for the given population. 
+
+$$
+\begin{aligned}
+\text{Number of stays}[i] &\sim \operatorname{Poisson}\left(\text{Population}[i] \times \lambda_{i}^S \right)\\
+\ln(\lambda_{i}^S) &= \beta_{\text{Admission Type}[i]}^S + \beta_{\text{Age}[i]}^S \\
+&+ \beta_{\text{Male}}^S\times\text{Male}[i] + \beta_{\text{Council Area}[i]}^S.
+\end{aligned}
+$$
+
+Once the number of stays for a given population has been generated, the second part of the model uses this as input to estimate the total length of stay in hospital for that population. The total length of stay is drawn from the following distribution:
+
+$$
+\begin{aligned}
+\text{Total length of stay}[i] &\sim \operatorname{Poisson}\left(\text{Number of stays}[i] \times \lambda_{i}^L \right)\\
+\ln(\lambda_{i}^L) &= \beta_{\text{Admission Type}[i]}^L + \beta_{\text{Age}[i]}^L \\
+&+ \beta_{\text{Male}}^L\times\text{Male}[i] + \beta_{\text{Council Area}[i]}^L
+\end{aligned}
+$$
+
+Here each $\beta^L$ is a parameter estimated by the length of stay model, and for each prediction parameter values are drawn from the model posterior distribution. Note that different parameters are used in the two models: for number of stays and length of stay. I.e. the $\beta^S$ parameters are distinct from the $\beta^L$ parameters.
+
+One aim of this dual approach is to model two kinds of uncertainty: the uncertainty of the rate at which a given population will be hospitalised in the future, and the uncertainty in how long they will remain in hospital.
+
+Although the data the model was trained on is split by council area, we are interested in the strain of resources at the level of health boards, and so the projections are presented at this level. This mapping is straightforward since the health board boundaries were altered in 2014 to align with council areas. More information is provided in Appendix A.
+
+## National Projections
+
+We begin with a plot of the projected total number of hospital stays and  days spent in hospital nationally over the next 20 years. The green line in Figure \@ref(fig:plt-proj-overall) is the posterior mean value and the purple region represents the Bayesian 95% credible interval.
+
+The central implication of this result is that the combined effect of population growth and population ageing is expected to increase the number of stays and total days spent in hospital by around 11% and 23% respectively over the following 20 years. As seen in Section 1, population is expected to flatten by the end of this period, as is the percentage of the population over 65. These effects appear to be mirrored by the flattening of the projected number of hospital stays by the end of the projection period.
+
+Another feature of this plot is the implausibly tight confidence intervals. Section 4 contains a discussion of the likely causes of this and potential model improvements.
+
+```{r plt-proj-overall, fig.cap="Projecting Demand for Hospital Beds in Scotland.", echo = FALSE}
+plt_proj_overall <- readRDS("Plots/plt_proj_overall.rds")
+
+plt_proj_overall
+```
+
+What admission types drive this increase, according to our projection model?
+
+In Figure \@ref(fig:plt-proj-adm), we see that for the number of stays the steepest increases are concentrated among emergency admissions and day cases. Increases in emergency admissions dominate for the total days in hospital projection. In the age subsection of Section 2, we saw that both the number and length of emergency admissions increase more steeply with age than elective admissions. We saw a similar pattern for day cases in the number of stays data. This suggests that the main driver of the projected increases is Scotland's changing age structure, rather than population growth.
+
+```{r plt-proj-adm, fig.cap="Projecting Demand by Admission Type.", echo = FALSE}
+plt_proj_adm <- readRDS("Plots/plt_proj_adm.rds")
+
+plt_proj_adm
+```
+
+Finally, we plot the projected change to mean length of stay. In Figure \@ref(fig:plt-mean-los), we see that the mean length of a hospital stay is projected to increase by 10% over the 20 years to 2043.
+
+The projected increase in both length of stay and number of hospital days compound, leading to the more dramatic increase in the total number of days spent in hospital seen in Figure \@ref(fig:plt-proj-overall).
+
+```{r plt-mean-los, fig.cap="Projecting Mean Length of Stay in Hospital.", echo = FALSE}
+plt_mean_los <- readRDS("Plots/plt_mean_los.rds")
+
+plt_mean_los
+```
+
+## Health Board Projections
+
+We saw in Section 1 that both population growth and population ageing are expected to vary markedly by region. We now turn to examine how this is reflected in the hospitalisation projections. We examine the level of the NHS health board.
+
+Figure \@ref(fig:plt-proj-HB) shows the expected change in total days spent in hospital for each health board, relative to 2023 levels. As may be expected from the results of Sections 2 and 3, the projected change in hospital demand varies dramatically by geography. The increase in total days spent in hospital in the Western Isles health board is projected to be only 7% through 2043, likely due to the projected decrease in population in that region. On the other hand Lothian and Orkney are projected for 35% and 27% increases respectively. As seen in Section 1, Lothian is expected to experience among the largest population growth, but the same is not true of Orkney. Instead the increase in hospital demand is likely a combination of maintaining population size, while the average population age increases.
+
+```{r plt-proj-HB, fig.cap="Projecting Demand for Hospital Beds by Health Board.", echo = FALSE}
+plt_proj_HB <- readRDS("Plots/plt_proj_HB.rds")
+
+plt_proj_HB
+```
+
+We now produce the same plot, this time focusing on mean length of stay (Figure \@ref(fig:plt-proj-los-HB)). The projected increases in the length of hospital stays are much less differentiated by region than the total number of days spent in hospital. 
+
+```{r plt-proj-los-HB, fig.cap="Projecting Mean Length of Stay by Health Board.", echo = FALSE}
+plt_proj_los_HB <- readRDS("Plots/plt_proj_los_HB.rds")
+
+plt_proj_los_HB
+```
+
+
+# Limitations
+
+In this section we discuss some limitations with the approach taken in this report, that could be the basis for improvements in future analysis.
+
+## Nearness to Death Effect
+
+There have been substantial challenges of the idea that age itself is the key factor for understanding hospitalisation rates [@zweifel_ageing_1999; @werblow_population_2007; @jones_does_2021]. The idea is that it is not age that predicts hospitalisation rates, but instead proximity to death. Eliding this distinction, it is argued, can lead to both over and under-estimation of hospital resources required [@jones_does_2021]. 
+
+One reason for this is that mortality rates vary substantially by region. The expected remaining lifetime of a 75 year old will vary by (among many factors) geography and this has implications for their chance of being hospitalised over the next (say) five years. Hospitalisation models that ignore this risk mis-estimation of required resources. Part of this geographic effect is likely indirectly captured by the model used in this report, which does allow hospitalisation rates and length of stay to vary by council area.
+
+Another implication of the nearness-to-death perspective is that rate of hospitalisation for a given age should be expected to change in the future, with changing mortality. The probability of death over the next year for an 80 year old Scottish male in 2023 is around 6%, this is down from 9% in 2003 and is expected to fall to 5% by 2043 [@office_for_national_statistics_mortality_2020]. If proximity to death is the key driver of hospitalisation rates, projections from an age-only model will increasingly diverge from reality. This effect is not captured by the model employed in this report. One approach may be to directly include mortality projections in the model, or model a cohort effect along with the age effect included here.
+
+## Further Sources of Variation
+
+Some figures in Section 3 include Bayesian credible intervals that are implausibly narrow for projections so far in the future. One reason for this is that the population projections used by the model do not contain estimates of uncertainty, and so the model treats them as known data, instead of uncertain projections. 
+
+However another reason for the implausibly low variation is rooted in the model itself. The projections for hospital stays and length of stay are drawn from a Poisson distribution, where the variance is constrained to be equal to the mean rate (usually labelled $\lambda$). When the true variation is greater than that imposed by the model form, the data is said to be 'overdispersed' relative to the model [@gardner_regression_1995]. There is some evidence in the posterior predictive plots in Appendix B that the hospitalisation model used in this report is overdispersed.  Several approaches to handling overdispersion have been developed and could be implemented in a future analysis [@gardner_regression_1995; @gelman_bayesian_2013].
+
+
+## NHS Management Changes
+
+Finally, the model does not take into account any changes made to NHS practices that could impact length of stay. Reviewing the hospitalisation data used to train the model, the average length of stay for emergency admissions have fallen by 7% since 2012, and the decrease for elective admission has been 9%. Although it is not plausible to assume that length of stay can be shortened indefinitely, the model used by this report assumes that mean length of stay for a given admission type, age, sex and council area will remain constant through 2043, and this is very likely too conservative. 
+
+A potential fix for this limitation would be to rerun the model under a number of different scenarios, for example a reduction to the calculated length of stay rate by (say) 0.5% a year. The sensitivity of the results to the fixed length of stay assumptions could then be evaluated.
+
+# Conclusion {-}
+
+Scotland's growing and ageing population is projected to lead to an increase in both the number of hospital stays and the mean length of each stay over the next 20 years. These effects combine, leading to a projected 23% increase in total days spent in hospital by 2043. This increase in total days spent in hospital is particularly marked for emergency admissions, which suggests that increasing population age is a larger driver than simply population growth.
+
+However the national level results mask a great deal of geographic variation in the projected hospitalisation trends. Across different health boards, the projected increases in total days spent in hospital range from 7% to 35%. The increase in mean length of stay is expected to be less differentiated geographically.
+
+Taken together these results suggest that the increasing age of the large baby boomer cohort will lead to larger demand on hospitals, and that this demand is unlikely to ease significantly until some time after the early 2040s. When planning for this increased demand, NHS health boards must be aware of how changing population and population age structure varies by region. 
+
+As detailed in Section 4, the model used in this report could be fruitfully extended in a number of ways. 
+
+# Appendix A: Data Sources and Software {-}
+
+## Data Sources Used
+
+### Hospitalisation Activity
+
+The key data source used in this report is 'Activity by Council Area, Age and Sex', published by Public Health Scotland [@public_health_scotland_activity_nodate]. It contains data on the number of hospital stays and total length of hospital stays over the past ten years, split by admission type, age, sex and council area.
+
+Although the focus of the projections on this report are concerned with the health board level (and not council area), this data set was chosen instead of the related data set by health board primarily because it extends to 2012 while the health board data set goes back only to 2017. One concern was that a large proportion of the health board data was collected during the COVID-19, and this is likely an anomalous period for hospitalisation rates and length of stay.
+
+Mapping from council area to health board is straightforward, as is detailed later in this Appendix.
+
+One minor quirk of this data set that had to be accounted for in the modelling process is that when number of stays for a particular age, sex and council area grouping is less than 10, it is rounded to the nearest five. This is likely done for privacy reasons. In some cases this leads to rows of data where the number of stays is 0 but the total length of stays is some positive number (obviously impossible if the true number of stays was 0). In order to model this, a floor of 1 stay was implemented in the data cleaning process. The stays variable ranges from 0 to 8016 in the data, and so inaccuracies in the true number of stays below 10 per group are unlikely to significantly affect the results.    
+
+### Historical Population Estimates
+
+The data on hospitalisation by council area is joined to data on the population of each council area for each year covered by the data. These are provided by Public Health Scotland under the name 'Council Area (2019) Population Estimates' [@public_health_scotland_council_nodate].
+
+### Population Projections
+
+Once the hospitalisation model is trained it is then applied to the expected future population to return projected number of stays and total length of stays. The expected future population is sourced from the data set 'Population Projections for Scottish Areas (2018-based)' published by the National Records of Scotland [@national_records_of_scotland_population_2020]. As mentioned in Section 4, this data set does not attempt to quantify the uncertainty in these population projections, and so this uncertainty cannot be incorporated into the model.
+
+
+### Council Areas, Health Boards and Mapping Between Them
+
+The following geography data sets were employed: 
+
+* 'Geography Codes and Labels' from Public Health Scotland for both council area and health board [@public_health_scotland_geography_nodate]
+* '2023-1 Scottish Postcode Directory Files' from the National Records of Scotland [@national_records_of_scotland_2023-1_nodate]
+* Boundary data for council areas and health boards [@spatialdatagovscot_boundaries_nodate; @spatial_hub_boundaries_nodate]
+
+The postcode files were used to map between the council areas that the model was trained on to the health boards that were the target of our projections. This mapping is straightforward, as the health board boundaries were altered in 2014 to align with the council areas.
+
+## Software Used
+
+Data preparation, and analysis were conducted in the R programming language, with particular reliance on the tidyverse collection of packages [@base; @tidyverse]. The summary report was written in R Markdown [@rmarkdown1]. Probabilistic programming language Stan was used to build the Bayesian Poisson regressions and perform projections [@gelman_stan:_2015; @rstan]. The R package tidybayes was extremely useful in handling the outputs of the Stan model [@tidybayes]. The sf package was used for the geographic figures[@sf1].    
+
+# Appendix B: Model Details {-}
+
+## Overview 
+
+The model is a combination of two Poisson regressions. The first aims to predict the number of hospital stays for a given population. The population is stratified by year, admission type, age, sex and council area. The second aims to predict the total length of stay in hospital for a given number of hospital stays.
+
+When the model performs projections on the future population, both of these models are combined: first the number of hospital stays is predicted, then the total length of stay in hospital is predicted given the number of stays.
+
+## Modelling the Number of Hospital Stays for a Given Population
+
+The number of hospital stays for a given year, admission type, age, sex and council area combination is modelled using a Poisson regression. The rate of hospitalisation $\lambda_{i}^S$ is applied to the population with that combination of characteristics.
+
+The rate of hospitalisation is a linear combination of the appropriate admission type, age, sex and council area parameters, exponentiated so as to ensure that the rate is positive.
+
+Here is the model formula:
+
+$$
+\begin{aligned}
+\text{Number of stays}[i] &\sim \operatorname{Poisson}\left(\text{Population}[i] \times \lambda_{i}^S \right)\\
+\ln(\lambda_{i}^S) &= \beta_{\text{Admission Type}[i]}^S + \beta_{\text{Age}[i]}^S \\
+&+ \beta_{\text{Male}}^S\times\text{Male}[i] + \beta_{\text{Council Area}[i]}^S\\
+\\
+\beta_{\text{Admission Type}}^S &\sim \operatorname{Normal}(-1.1,0.6)\\
+\beta_{\text{Age}}^S &\sim \operatorname{Normal}(-1.1,0.6)\\
+\beta_{\text{Male}}^S &\sim \operatorname{Normal}(-0.6,0.4)\\
+\beta_{\text{Council Area}}^S &\sim \operatorname{Normal}(-0.6,0.4)\\
+\end{aligned}
+$$
+Here:
+
+* $\text{Number of stays}[i]$ is the total number of hospital stays in row $i$ of the data, representing a given year, admission type, age, sex and council area combination.
+* $\text{Population}[i]$ is the total population in row $i$ of the data, representing a given year, admission type, age, sex and council area combination.
+* $\lambda_{i}^S$ is the hospitalisation rate, which varies with admission type, age, sex, and council area.
+* $\beta_{\text{Admission Type}[i]}^S$ is the parameter associated with the admission type in row $i$ of the data. There are three parameters, one for each admission type: day case, elective, and emergency.
+* $\beta_{\text{Age}[i]}^S$ is the parameter associated with the age in row $i$ of the data. There are 19 parameters, one for each age group, though the parameter for ages 0-4 is fixed at zero for identifiability.
+* $\text{Male}[i]$ is an indicator variable. It is 1 when the population of row $i$ is male, and 0 when it is female.
+* $\beta_{\text{Male}}^S$ is the parameter associated with maleness. It is included in the hospitalisation rate when $\text{Male}[i]=1$, i.e. when row $i$ of the data represents a male population.
+* $\beta_{\text{Council Area}[i]}^S$ is the parameter associated with the council area in row $i$ of the data. There are 32 parameters, one for each council area, though the parameter for Aberdeen City is fixed at zero for identifiability.
+
+The priors on the parameters are discussed further in the subsection 'Priors and the Prior Predictive Distribution' later in Appendix B.
+
+
+## Modelling the Total Length of Hospital Stays for a Given Number of Stays
+
+The total length of time spent in hospital for a given year, admission type, age, sex and council area combination is also modelled using a Poisson regression. This time the exposure is the number of stays, so that the parameter $\lambda_{i}^L$ is the mean length of each hospital stay.
+
+Here is the model formula:
+
+$$
+\begin{aligned}
+\text{Total length of stay}[i] &\sim \operatorname{Poisson}\left(\text{Number of stays}[i] \times \lambda_{i}^L \right)\\
+\ln(\lambda_{i}^L) &= \beta_{\text{Admission Type}[i]}^L + \beta_{\text{Age}[i]}^L \\
+&+ \beta_{\text{Male}}^L\times\text{Male}[i] + \beta_{\text{Council Area}[i]}^L\\
+\\
+\beta_{\text{Admission Type}}^L &\sim \operatorname{Normal}(0,2)\\
+\beta_{\text{Age}}^L &\sim \operatorname{Normal}(0,2)\\
+\beta_{\text{Male}}^L &\sim \operatorname{Normal}(0,1)\\
+\beta_{\text{Council Area}}^L &\sim \operatorname{Normal}(0,1)\\
+\end{aligned}
+$$
+Here:
+
+* $\text{Total length of stay}[i]$ is the total time spent in hospital for the population in row $i$ of the data, representing a given year, admission type, age, sex and council area combination.
+* $\text{Number of stays}[i]$ is the total number of hospital stays in row $i$ of the data, representing a given year, admission type, age, sex and council area combination.
+* $\lambda_{i}^L$ is the mean length of each hospital stay, which varies with admission type, age, sex, and council area.
+* $\beta_{\text{Admission Type}[i]}^L$ is the parameter associated with the admission type in row $i$ of the data. There are three parameters, one for each admission type: day case, elective, and emergency.
+* $\beta_{\text{Age}[i]}^L$ is the parameter associated with the age in row $i$ of the data. There are 19 parameters, one for each age group, though the parameter for ages 0-4 is fixed at zero for identifiability.
+* $\text{Male}[i]$ is an indicator variable. It is 1 when the population of row $i$ is male, and 0 when it is female.
+* $\beta_{\text{Male}}^L$ is the parameter associated with maleness. It is included in the hospitalisation rate when $\text{Male}[i]=1$, i.e. when row $i$ of the data represents a male population.
+* $\beta_{\text{Council Area}[i]}^L$ is the parameter associated with the council area in row $i$ of the data. There are 32 parameters, one for each council area, though the parameter for Aberdeen City is fixed at zero for identifiability.
+
+The priors on the parameters are discussed further in the following subsection.
+
+
+## Priors and the Prior Predictive Distribution
+
+### Number of Stays Model Priors
+
+The priors on the number of stays parameters are as follows:
+
+$$
+\begin{aligned}
+\beta_{\text{Admission Type}}^S &\sim \operatorname{Normal}(-1.1,0.6)\\
+\beta_{\text{Age}}^S &\sim \operatorname{Normal}(-1.1,0.6)\\
+\beta_{\text{Male}}^S &\sim \operatorname{Normal}(-0.6,0.4)\\
+\beta_{\text{Council Area}}^S &\sim \operatorname{Normal}(-0.6,0.4).\\
+\end{aligned}
+$$
+
+The parameters associated with admission type, age, and council area are vectors. There are three admission types, each with its own prior, and similarly for the 19 age categories and 32 council areas^[For both age and council area, one of the parameters is fixed at zero for identifiability].
+
+The priors are centred on slightly negative values, reflecting the fact that there are typically fewer hospital stays for a given population in a year than there are members of that population. I.e. we want the exponential of the linear sum of parameters $\lambda^S_i$ to be usually less than one.
+
+Here, admission type and age are assigned a broader variance than sex or council area. This reflects a belief that these variables may be more influential on the number of hospital stays. However the priors are permissive enough to be easily overwhelmed by the volume of data if reality contradicts this belief. 
+
+The priors are chosen so as to permit all a priori plausible values for length of stay, as well as some implausible ones. That they achieve this can be demonstrated by simulating from the priors many times, calculating statistics like the maximum number of stays, and comparing the resulting histogram to the true value of those statistics calculated on the observed data. 
+
+In Figure \@ref(fig:plt-prior-pred-sty), the purple histogram represents the outcome of simulation from priors, and the green line the associated values in the data^[Note that the number of stays in the data set are artificially set to a floor of one for reasons described in Appendix A].
+
+```{r plt-prior-pred-sty, fig.cap="Prior Preditive Plots for Number of Hospital Stays.", echo = FALSE}
+ plt_prior_pred_sty <- readRDS("Plots/plt_prior_pred_sty.rds")
+
+ plt_prior_pred_sty
+```
+
+### Length of Stay Model Priors
+
+The priors on the length of stay parameters are as follows:
+
+$$
+\begin{aligned}
+\beta_{\text{Admission Type}}^L &\sim \operatorname{Normal}(0,2)\\
+\beta_{\text{Age}}^L &\sim \operatorname{Normal}(0,2)\\
+\beta_{\text{Male}}^L &\sim \operatorname{Normal}(0,1)\\
+\beta_{\text{Council Area}}^L &\sim \operatorname{Normal}(0,1)\\
+\end{aligned}
+$$
+
+As described in the number of stays subsection, the parameters associated with admission type, age, and council area are vectors.
+
+The priors are centred on zero, suggesting a typical stay of about 1 day. However they are broad enough to permit a wide range of stay lengths.
+
+In Figure \@ref(fig:plt-prior-pred-los), data is simulated from the priors many times, statistics calculated on each simulation, and histograms plotted. The statistics of the observed data are depicted by green lines.
+
+These priors permit implausibly high values of total length of stay, and so could be tightened. However there is sufficient data to overwhelm them.
+
+```{r plt-prior-pred-los, fig.cap="Prior Preditive Plots for Total Length of Stay.", echo = FALSE}
+ plt_prior_pred_los <- readRDS("Plots/plt_prior_pred_los.rds")
+
+ plt_prior_pred_los
+```
+
+
+## Diagnostics
+
+In this section we examine model diagnostics after conditioning the model on the data. Trace plots display the course of multiple MCMC chains as they sample the posterior distribution. In a well-behaved model, the chains should explore the same high probability regions of the posterior, each rapidly exploring this region without getting stuck.
+
+The trace plots for a subset of the parameters are displayed below in Figures \@ref(fig:plt-trace-adm-sty) and \@ref(fig:plt-trace-age-sty). They do not indicate any sampling issues. Parameters for geography and sex are not displayed due to space constraints, but look similarly healthy^[Code for producing these plots, and plots for the other parameters is available on github at https://github.com/J-Lawler/Hospital-Admissions].
+
+```{r plt-trace-adm-sty, fig.cap="Trace Plots for Admission Type Parameters.", echo = FALSE}
+plt_trace_adm_sty <- readRDS("Plots/plt_trace_adm_sty.rds")
+
+plt_trace_adm_sty
+```
+
+In Figure \@ref(fig:plt-trace-age-sty) we see the effect of fixing the 0-4 years parameter at 0. Trace plots for the non-fixed parameters appear healthy.
+
+```{r plt-trace-age-sty, fig.cap="Trace Plots for Age Parameters.", echo = FALSE}
+plt_trace_age_sty <- readRDS("Plots/plt_trace_age_sty.rds")
+
+plt_trace_age_sty
+```
+
+Another convergence diagnostic tool, $\hat R$ compares the variance within a single chain to the variance between chains in an attempt to summarise in a single number the extent to which sampling chains have mixed well [@vehtari_rank-normalization_2021]. Vehtari et al. recommend only using a sample if $\hat R$ is less than 1.01, which is the case for the model used in this report^[See code at https://github.com/J-Lawler/Hospital-Admissions].
+
+
+## Posterior Predictive
+
+Posterior predictive plots aim to uncover features of the data that are poorly described by the model. [@gelman_diagnostic_2000] Gelman et al. recommend performing posterior predictive checks using statistics orthogonal to the model parameters, since by their nature posterior predictive checks use the data twice (once to fit, once to test that fit). 
+
+In a Poisson regression the mean (and therefore also the variance) are explicit targets of the model, and so posterior predictive plots using these statistics are likely less able to reveal discrepancies between the model and the data. Therefore, the statistics chosen for the posterior predictive plot below are the maximum, minimum, median, and skew.
+
+In Figure \@ref(fig:plt-post-pred-sty), the purple histogram represents draws from the model posterior distribution, and the green line the associated values in the data. The true minimum number of stays is well-represented in the posterior. While the model fails to capture the true median number of stays in the data (170), it is not very far off, with 175 having highest probability. The same is true for skewness, where the true value is a little above 3.1 and the posterior probability is concentrated around 2.85. 
+
+However, the model badly underestimates the highest values for number of hospital stays. The true value for the maximum in the data is around 4,350, around 25% higher than the values assigned much posterior probability by the model. This failure likely points to an overdispersion problem: there is more variation in the data than is allowed by the model. Discussion of this problem, and possible remedies, are discussed in Section 4.     
+
+
+```{r plt-post-pred-sty, fig.cap="Posterior Preditive Plots for Number of Hospital Stays.", echo = FALSE}
+ plt_post_pred_sty <- readRDS("Plots/plt_post_pred_sty.rds")
+
+ plt_post_pred_sty
+```
+
+The results are similar for the length of stay model (Figure \@ref(fig:plt-post-pred-los)), though this time estimates of the maximum miss by closer to 10%, and the median by about the same amount. This suggests that the approaches to dealing with overdispersion mentioned in Section 4 could be fruitfully applied to both models.
+
+```{r plt-post-pred-los, fig.cap="Posterior Preditive Plots for Total Length of Stay.", echo = FALSE}
+ plt_post_pred_los <- readRDS("Plots/plt_post_pred_los.rds")
+
+ plt_post_pred_los
+```
+
+# Appendix C: Model Code {-}
+
+Model code, written in the Stan programming language, is reproduced below:
+
+```{stan eval = FALSE, output.var="poisson_model"}
+data{
+  
+    // Data for Model Fitting
+    int<lower=0> n;
+    int<lower=0> n_adm;
+    int<lower=0> n_age;
+    int<lower=0> n_geo;
+    array[n] int los; // Length of Stay
+    array[n] int stays_int; // Stays as integer
+    vector[n] log_stays; // Log stays as vector
+    vector[n] log_pop;
+    array[n] int<lower=1, upper=n_adm> adm;
+    array[n] int<lower=1, upper=n_age> age;
+    vector[n] male;
+    array[n] int<lower=1, upper=n_geo> geo;
+    
+    // Data for Projection
+    int<lower=0> n_proj;
+    vector[n_proj] log_pop_proj;
+    array[n_proj] int<lower=1, upper=n_adm> adm_proj;
+    array[n_proj] int<lower=1, upper=n_age> age_proj;
+    vector[n_proj] male_proj;
+    array[n_proj] int<lower=1, upper=n_geo> geo_proj;
+    
+    // Data for Fixed Age Structure
+    int<lower=0> n_fix;
+    vector[n_fix] log_pop_fix;
+    array[n_fix] int<lower=1, upper=n_adm> adm_fix;
+    array[n_fix] int<lower=1, upper=n_age> age_fix;
+    vector[n_fix] male_fix;
+    array[n_fix] int<lower=1, upper=n_geo> geo_fix;
+    
+    // Switch to evaluate the likelihood
+    int<lower = 0, upper = 1> condition_on_data;
+  
+}
+parameters{
+    
+    // Model Parameters
+    vector[n_adm] b_adm_sty;
+    vector[n_age-1] b_age_raw_sty;
+    real b_male_sty;
+    vector[n_geo-1] b_geo_raw_sty;
+    
+    vector[n_adm] b_adm_los;
+    vector[n_age-1] b_age_raw_los;
+    real b_male_los;
+    vector[n_geo-1] b_geo_raw_los;
+    
+}
+transformed parameters{
+    // Fix baseline cateogories for age and geo. (absorbed into intercept)
+    
+    vector[n_age] b_age_sty = append_row(0, b_age_raw_sty);
+    vector[n_geo] b_geo_sty = append_row(0, b_geo_raw_sty);
+    
+    vector[n_age] b_age_los = append_row(0, b_age_raw_los);
+    vector[n_geo] b_geo_los = append_row(0, b_geo_raw_los);
+}
+model{
+
+    // Linear predictor
+    vector[n] mu_sty;
+    
+    vector[n] mu_los;
+    
+    // Priors
+    b_adm_sty ~ normal(-1.1,0.6); // Priors skew negative since Stay typically < Pop
+    b_age_sty ~ normal(-1.1,0.6);
+    b_male_sty ~ normal(-0.6,0.4);
+    b_geo_raw_sty ~ normal(-0.6,0.4);
+    
+    b_adm_los ~ normal(0,2); // Priors centred on 0 
+    b_age_los ~ normal(0,2); 
+    b_male_los ~ normal(0,1);
+    b_geo_raw_los ~ normal(0,1);
+    
+    // Model
+    
+    // Linear predictor 
+    mu_sty = b_adm_sty[adm] + b_age_sty[age] + b_male_sty*male + b_geo_sty[geo];
+    
+    mu_los = b_adm_los[adm] + b_age_los[age] + b_male_los*male + b_geo_los[geo];
+    
+    // Condition on data
+    if(condition_on_data==1){
+
+      stays_int ~ poisson_log(log_pop + mu_sty); // = Poi(Pop .* exp(mu))    
+      los ~ poisson_log(log_stays + mu_los);
+    }
+}
+generated quantities{
+
+    // Data Replication
+    
+    // Initialise
+    vector[n] mu_sty;
+    array[n] int rep_stays;
+    
+    vector[n] mu_los;
+    array[n] int rep_los;
+    
+    // Generate fitted values
+    mu_sty = b_adm_sty[adm] + b_age_sty[age] + b_male_sty*male + b_geo_sty[geo];
+    
+    mu_los = b_adm_los[adm] + b_age_los[age] + b_male_los*male + b_geo_los[geo];
+      
+    // Generate replicated data
+    rep_stays=poisson_log_rng(log_pop + mu_sty); // = Poi(Pop .* exp(mu))  
+        
+    rep_los=poisson_log_rng(log_stays + mu_los);
+    
+    // Projection
+    
+    // Initialise
+    vector[n_proj] mu_proj_sty;
+    array[n_proj] int proj_stays_int;
+    array[n_proj] int ones = rep_array(1,n_proj);
+    
+    vector[n_proj] mu_proj_los;
+    array[n_proj] int proj_los;
+    
+    // Generate fitted values
+    mu_proj_sty = b_adm_sty[adm_proj] + b_age_sty[age_proj] + b_male_sty*male_proj + b_geo_sty[geo_proj];
+    
+    mu_proj_los = b_adm_los[adm_proj] + b_age_los[age_proj] + b_male_los*male_proj + b_geo_los[geo_proj];
+      
+    // Generate replicated data
+    proj_stays_int = poisson_log_rng(log_pop_proj + mu_proj_sty); // = Poi(Pop .* exp(mu))
+    
+    // Minimum Stays to 1 for reasons discussed in paper
+    array[n_proj] real stays_proj_floor = fmax(proj_stays_int,ones);
+    
+    vector[n_proj] log_stays_proj = log(to_vector(stays_proj_floor)); 
+    
+    proj_los=poisson_log_rng(log_stays_proj + mu_proj_los);
+    
+    
+    // Fixed Age Structure
+    
+    // Initialise
+    vector[n_fix] mu_fix_sty;
+    array[n_fix] int fix_stays_int;
+    array[n_fix] int ones_fix = rep_array(1,n_fix);
+    
+    vector[n_fix] mu_fix_los;
+    array[n_fix] int fix_los;
+    
+    // Generate fitted values
+    mu_fix_sty = b_adm_sty[adm_fix] + b_age_sty[age_fix] + b_male_sty*male_fix + b_geo_sty[geo_fix];
+    
+    mu_fix_los = b_adm_los[adm_fix] + b_age_los[age_fix] + b_male_los*male_fix + b_geo_los[geo_fix];
+      
+    // Generate replicated data
+    fix_stays_int = poisson_log_rng(log_pop_fix + mu_fix_sty); // = Poi(Pop .* exp(mu))
+    
+    // Minimum Stays to 1 for reasons discussed in paper
+    array[n_fix] real stays_fix_floor = fmax(fix_stays_int,ones_fix);
+    
+    vector[n_fix] log_stays_fix = log(to_vector(stays_fix_floor)); 
+    
+    fix_los=poisson_log_rng(log_stays_fix + mu_fix_los);
+    
+}
+```
+
+
+# References {-}
+

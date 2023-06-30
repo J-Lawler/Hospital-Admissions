@@ -1,17 +1,10 @@
 
-########## Contents ##########
 
-# Preamble
+#############################################################################
 
-# Data Preparation
+# Attempt at Poisson-Poisson Model
 
-# Simple Binomial Model
-  
-  ## Stan Code
-  ## Prior Predictive
-  ## Posterior
-  ## Projections
-  ## Quick Projections
+
 
 ########## Preamble ##########
 
@@ -19,6 +12,8 @@
 library(tidybayes)
 library(tidyverse)
 library(rstan)
+library(arrow)
+library(moments)
 
 # Age factor levels
 age_levels <- c("0-4 years", "5-9 years", "10-14 years", "15-19 years", "20-24 years", "25-29 years", 
@@ -26,293 +21,755 @@ age_levels <- c("0-4 years", "5-9 years", "10-14 years", "15-19 years", "20-24 y
                 "60-64 years", "65-69 years", "70-74 years", "75-79 years", "80-84 years", "85-89 years",
                 "90 years and over")
 
+admission_levels <- c("Day case", "Elective", "Emergency")
+
 # Load in data
 df_HA_model <- read_csv("Data_Clean/HA Model Data.csv")|>
-  mutate(Age = factor(Age, levels = age_levels)) # Restore factor levels
+  mutate(Age = factor(Age, levels = age_levels), # Restore factor levels
+         AdmissionType = factor(AdmissionType, levels = admission_levels))|> 
+  filter(AdmissionType != "All Inpatients and Day cases", # Not used now
+         AdmissionType != "Not Specified") # Consider imputing in future
+  
+df_proj <- read_csv("Data_Clean/Council Area Projections.csv")|>
+  mutate(Age = factor(Age, levels = age_levels))|> # Restore factor levels
+  expand_grid(AdmissionType = admission_levels)|>
+  mutate(AdmissionType = factor(AdmissionType, levels = admission_levels))
 
-df_proj <- read_csv("Data_Clean/Population Projections (2018).csv")|>
-  mutate(Age = factor(Age, levels = age_levels)) # Restore factor levels
+#write_parquet(df_proj,sink="Data_Clean/df_proj.parquet")
 
 # Useful functions
 f_inv_logit <-  function(x) exp(x)/(1+exp(x)) # Inverse_logit
-
 
 
 ########## Data Preparation ##########
 
 age_level_num <- 1:19
 
+admission_level_num <- 1:3
+
 df_HA_stan <- df_HA_model|>
   mutate(Age = age_level_num[df_HA_model$Age], # Convert factor to numeric
-         Sex = if_else(Sex=="Female",1,2))
+         Male = if_else(Sex=="Female",0,1),
+         Adm = admission_level_num[df_HA_model$AdmissionType])|>
+  rename(Geo = CA_ID)
 
 df_proj_stan <- df_proj|>
   mutate(Age = age_level_num[df_proj$Age], # Convert factor to numeric
-         Sex = if_else(Sex=="Female",1,2))
+         Male = if_else(Sex=="Female",0,1),
+         Adm = admission_level_num[df_proj$AdmissionType])|>
+  rename(Geo = CA_ID)
 
-########## Simple Binomial Model ##########
 
-# Start here, can later add over-dispersion, or a Poisson element to 
-# estimate total length of stays
+# For effect of geography - construct a Scotland where each CA has the same age structure 
+df_fix_age <- df_HA_stan|>
+  filter(Year == max(Year),
+         AdmissionType=="Elective")|>
+  group_by(Age)|>
+  summarise(Population = sum(Population))|>
+  mutate(Population = as.integer(Population/64)) # Divide population evenly through the 32 council areas and by male / female
 
+df_fix_stan <- expand_grid(Geo = 1:32,
+                           Age = 1:19,
+                           Male = c(0,1),
+                           Adm = 1:3)|>
+  left_join(df_fix_age, by = "Age")
+
+write_parquet(df_fix_stan, sink = "Data_Clean/df_fix_stan.parquet")
+
+########## Poisson Poisson Model ##########
+
+# Note that Population is not necessarily greater than Stay or Length of Stay
+
+diff <- df_HA_model$Population - df_HA_model$TotalLengthofStay
+
+min_index <- which(diff == min(diff))
+
+df_HA_model[min_index,]
 
 
 #### Stan Code ####
 
-code_bin <- 
+code_pois <- 
   "data{
   
-    // Data
+    // Data for Model Fitting
     int<lower=0> n;
-    array[n] int patients;
-    array[n] int pop;
-    array[n] int<lower=1, upper=32> CA;
-    array[n] int<lower=1, upper=19> age;
-    array[n] int<lower=1, upper=2> sex;
+    int<lower=0> n_adm;
+    int<lower=0> n_age;
+    int<lower=0> n_geo;
+    array[n] int los; // Length of Stay
+    array[n] int stays_int; // Stays as integer
+    vector[n] log_stays; // Log stays as vector
+    vector[n] log_pop;
+    array[n] int<lower=1, upper=n_adm> adm;
+    array[n] int<lower=1, upper=n_age> age;
+    vector[n] male;
+    array[n] int<lower=1, upper=n_geo> geo;
+    
+    // Data for Projection
+    int<lower=0> n_proj;
+    vector[n_proj] log_pop_proj;
+    array[n_proj] int<lower=1, upper=n_adm> adm_proj;
+    array[n_proj] int<lower=1, upper=n_age> age_proj;
+    vector[n_proj] male_proj;
+    array[n_proj] int<lower=1, upper=n_geo> geo_proj;
+    
+    // Data for Fixed Age Structure
+    int<lower=0> n_fix;
+    vector[n_fix] log_pop_fix;
+    array[n_fix] int<lower=1, upper=n_adm> adm_fix;
+    array[n_fix] int<lower=1, upper=n_age> age_fix;
+    vector[n_fix] male_fix;
+    array[n_fix] int<lower=1, upper=n_geo> geo_fix;
     
     // Switch to evaluate the likelihood
     int<lower = 0, upper = 1> condition_on_data;
+  
 }
 parameters{
     
-    // Hyperpriors
-    real mu_CA;
-    real mu_age;
-    real mu_sex;
-    real<lower = 0> sigma_CA;
-    real<lower = 0> sigma_age;
-    real<lower = 0> sigma_sex;
-    
     // Model Parameters
-    vector[32] b_CA;
-    vector[19] b_age;
-    vector[2] b_sex;
+    vector[n_adm] b_adm_sty;
+    vector[n_age-1] b_age_raw_sty;
+    real b_male_sty;
+    vector[n_geo-1] b_geo_raw_sty;
+    
+    vector[n_adm] b_adm_los;
+    vector[n_age-1] b_age_raw_los;
+    real b_male_los;
+    vector[n_geo-1] b_geo_raw_los;
+    
+}
+transformed parameters{
+    // Fix baseline cateogories for age and geo. (absorbed into intercept)
+    
+    vector[n_age] b_age_sty = append_row(0, b_age_raw_sty);
+    vector[n_geo] b_geo_sty = append_row(0, b_geo_raw_sty);
+    
+    vector[n_age] b_age_los = append_row(0, b_age_raw_los);
+    vector[n_geo] b_geo_los = append_row(0, b_geo_raw_los);
 }
 model{
 
     // Linear predictor
-    vector[n] mu;
+    vector[n] mu_sty;
     
-    // Hyperpriors
-    mu_CA ~ normal(-0.3,0.1);
-    mu_age ~ normal(-0.3,0.1);
-    mu_sex ~ normal(-0.3,0.1);
-    sigma_CA ~ normal(0,0.5);
-    sigma_age ~ normal(0,0.5);
-    sigma_sex ~ normal(0,0.5);
+    vector[n] mu_los;
     
     // Priors
-    //alpha ~ normal(-1,1); // skew towards probabilities < 0.5 
-    b_CA ~ normal(mu_CA,sigma_CA);
-    b_age ~ normal(mu_age,sigma_age);
-    b_sex ~ normal(mu_sex,sigma_sex);
+    b_adm_sty ~ normal(-1.1,0.6); // Priors skew negative since Stay typically < Pop
+    b_age_sty ~ normal(-1.1,0.6);
+    b_male_sty ~ normal(-0.6,0.4);
+    b_geo_raw_sty ~ normal(-0.6,0.4);
+    
+    b_adm_los ~ normal(0,2); // Priors centred on 0 
+    b_age_los ~ normal(0,2); 
+    b_male_los ~ normal(0,1);
+    b_geo_raw_los ~ normal(0,1);
     
     // Model
     
     // Linear predictor 
-    mu = b_CA[CA] + b_age[age] + b_sex[sex];
+    mu_sty = b_adm_sty[adm] + b_age_sty[age] + b_male_sty*male + b_geo_sty[geo];
+    
+    mu_los = b_adm_los[adm] + b_age_los[age] + b_male_los*male + b_geo_los[geo];
     
     // Condition on data
     if(condition_on_data==1){
-      patients ~ binomial_logit(pop, mu);
+
+      stays_int ~ poisson_log(log_pop + mu_sty); // = Poi(Pop .* exp(mu))    
+      los ~ poisson_log(log_stays + mu_los);
     }
 }
 generated quantities{
+
+    // Data Replication
     
     // Initialise
-    vector[n] mu;
-    vector[n] prob;
-    array[n] int pat_rep;
+    vector[n] mu_sty;
+    array[n] int rep_stays;
+    
+    vector[n] mu_los;
+    array[n] int rep_los;
     
     // Generate fitted values
-    mu = b_CA[CA] + b_age[age] + b_sex[sex];
-    prob = inv_logit(mu);
+    mu_sty = b_adm_sty[adm] + b_age_sty[age] + b_male_sty*male + b_geo_sty[geo];
+    
+    mu_los = b_adm_los[adm] + b_age_los[age] + b_male_los*male + b_geo_los[geo];
       
     // Generate replicated data
-    pat_rep=binomial_rng(pop,prob);
+    rep_stays=poisson_log_rng(log_pop + mu_sty); // = Poi(Pop .* exp(mu))  
+        
+    rep_los=poisson_log_rng(log_stays + mu_los);
+    
+    // Projection
+    
+    // Initialise
+    vector[n_proj] mu_proj_sty;
+    array[n_proj] int proj_stays_int;
+    array[n_proj] int ones = rep_array(1,n_proj);
+    
+    vector[n_proj] mu_proj_los;
+    array[n_proj] int proj_los;
+    
+    // Generate fitted values
+    mu_proj_sty = b_adm_sty[adm_proj] + b_age_sty[age_proj] + b_male_sty*male_proj + b_geo_sty[geo_proj];
+    
+    mu_proj_los = b_adm_los[adm_proj] + b_age_los[age_proj] + b_male_los*male_proj + b_geo_los[geo_proj];
+      
+    // Generate replicated data
+    proj_stays_int = poisson_log_rng(log_pop_proj + mu_proj_sty); // = Poi(Pop .* exp(mu))
+    
+    // Minimum Stays to 1 for reasons discussed in paper
+    array[n_proj] real stays_proj_floor = fmax(proj_stays_int,ones);
+    
+    vector[n_proj] log_stays_proj = log(to_vector(stays_proj_floor)); 
+    
+    proj_los=poisson_log_rng(log_stays_proj + mu_proj_los);
+    
+    
+    // Fixed Age Structure
+    
+    // Initialise
+    vector[n_fix] mu_fix_sty;
+    array[n_fix] int fix_stays_int;
+    array[n_fix] int ones_fix = rep_array(1,n_fix);
+    
+    vector[n_fix] mu_fix_los;
+    array[n_fix] int fix_los;
+    
+    // Generate fitted values
+    mu_fix_sty = b_adm_sty[adm_fix] + b_age_sty[age_fix] + b_male_sty*male_fix + b_geo_sty[geo_fix];
+    
+    mu_fix_los = b_adm_los[adm_fix] + b_age_los[age_fix] + b_male_los*male_fix + b_geo_los[geo_fix];
+      
+    // Generate replicated data
+    fix_stays_int = poisson_log_rng(log_pop_fix + mu_fix_sty); // = Poi(Pop .* exp(mu))
+    
+    // Minimum Stays to 1 for reasons discussed in paper
+    array[n_fix] real stays_fix_floor = fmax(fix_stays_int,ones_fix);
+    
+    vector[n_fix] log_stays_fix = log(to_vector(stays_fix_floor)); 
+    
+    fix_los=poisson_log_rng(log_stays_fix + mu_fix_los);
+    
 }"
-
 
 
 #### Prior Predictive ####
 
 # Input list
-list_bin_prior <- list(patients = df_HA_stan$Patients,
-                       pop = df_HA_stan$Population,
-                       CA = df_HA_stan$CA_ID,
-                       age = df_HA_stan$Age,
-                       sex = df_HA_stan$Sex,
-                       condition_on_data = 0, # the model does not condition on the data
-                       n = nrow(df_HA_stan))
+list_pois_prior <- list(los = df_HA_stan$TotalLengthofStay,
+                        log_stays = log(df_HA_stan$Stays),
+                        stays_int = df_HA_stan$Stays,
+                        log_pop = log(df_HA_stan$Population),
+                        adm = df_HA_stan$Adm,
+                        age = df_HA_stan$Age,
+                        geo = df_HA_stan$Geo,
+                        male = df_HA_stan$Male,
+                        condition_on_data = 0, # the model doesn't condition on the data
+                        n = nrow(df_HA_stan),
+                        n_adm = 3,
+                        n_age = 19,
+                        n_geo = 32,
+                        n_proj = 10,
+                        log_pop_proj = rep(1,10),
+                        adm_proj = rep(1,10),
+                        age_proj = rep(1,10),
+                        geo_proj = rep(1,10),
+                        male_proj = rep(1,10),
+                        perform_projections = 0)
 
 
-
-if(!file.exists("Models/samples_bin_prior.rds")){
+if(!file.exists("Models/samples_pois_prior.rds")){
   # Compiles the model
-  stan_bin <- stan_model(model_name = "stan_bin",model_code=code_bin)
+  stan_pois <- stan_model(model_name = "stan_pois",model_code=code_pois)
   
   # Sample
-  samples_bin_prior <-  sampling(stan_bin,
-                                 data = list_bin_prior, 
-                                 chains=1, iter = 1000,
-                                 cores = parallel::detectCores())
+  samples_pois_prior <-  sampling(stan_pois,
+                                  data = list_pois_prior, 
+                                  chains=1, iter = 1000,
+                                  cores = parallel::detectCores(),
+                                  pars = c("mu_sty","mu_los", "rep_stays","rep_los"))
   
   # Save file
-  saveRDS(samples_bin_prior,file="Models/samples_bin_prior.rds")
+  saveRDS(samples_pois_prior,file="Models/samples_pois_prior.rds")
 }else{
-  samples_bin_prior <- readRDS(file="Models/samples_bin_prior.rds")
+  samples_pois_prior <- readRDS(file="Models/samples_pois_prior.rds")
 }
+
+
+# Save Model Outputs
+if(!file.exists("Model_Outputs/draws_prior_reps.parquet")){
+  
+  draws_prior_reps <- gather_draws(samples_pois_prior, 
+                                   rep_stays[i], mu_sty[i],
+                                   rep_los[i], mu_los[i])
+  # Save file
+  write_parquet(draws_prior_reps,sink="Model_Outputs/draws_prior_reps.parquet")
+}else{
+  draws_prior_reps <- read_parquet("Model_Outputs/draws_prior_reps.parquet")
+}
+
+# Plot Histogram of Prior Reps
+if(!file.exists("Plots/plt_prior_reps.rds")){
+  
+  plt_prior_reps <- draws_prior_reps|>
+    filter(!(.variable == "rep_stays" & .value >2000), # scale plot wrt 99th percentile
+           !(.variable == "rep_los" & .value >15000))|>
+    mutate(.variable = case_match(.variable,
+                                  "mu_sty" ~ "Mu Stays",
+                                  "mu_los" ~ "Mu Total Length of Stays",
+                                  "rep_sty" ~ "Number of Stays",
+                                  "rep_los" ~ "Total Length of Stay"))|>
+    ggplot(aes(x = .value))+
+    geom_histogram(fill="#440154", bins = 30)+
+    facet_wrap(~.variable, scales = "free")+
+    ggtitle("Prior Predictive Distribution")+
+    ylab("Count")+
+    xlab("Value")+
+    scale_y_continuous(labels = ~ format(.x, scientific = FALSE))+
+    theme_bw()
+  
+  # Save Plot
+  saveRDS(plt_prior_reps, "Plots/plt_prior_reps.rds")
+  
+}else{
+  plt_prior_reps <- readRDS("Plots/plt_prior_reps.rds")
+}
+
+
+# Statistics of original dataset 
+df_stats_stays<- df_HA_model|> 
+  summarise(`Minimum Number of Stays` = min(Stays), 
+            `Maximum Number of Stays` = max(Stays), 
+            `Median Number of Stays` = median(Stays), 
+            `Skew of Number of Stays` = skewness(Stays))|>
+  pivot_longer(cols = 1:4, names_to = "statistic")
+
+df_stats_los<- df_HA_model|> 
+  summarise(`Minimum Total Length of Stay` = min(TotalLengthofStay), 
+            `Maximum Total Length of Stay` = max(TotalLengthofStay), 
+            `Median Total Length of Stay` = median(TotalLengthofStay), 
+            `Skew of Total Length of Stay` = skewness(TotalLengthofStay))|>
+  pivot_longer(cols = 1:4, names_to = "statistic")
+
+
+# Plot Prior Predictive Distribution - Number of Stays
+if(!file.exists("Plots/plt_prior_pred_sty.rds")){
+  
+  plt_prior_pred_sty <- draws_prior_reps|>
+    filter(.variable == "rep_stays")|>
+    group_by(.draw)|>
+    summarise(`Minimum Number of Stays` = min(.value), 
+              `Maximum Number of Stays` = max(.value), 
+              `Median Number of Stays` = median(.value), 
+              `Skew of Number of Stays` = skewness(.value))|>
+    pivot_longer(cols = 2:5, names_to = "statistic")|>
+    filter(!(statistic == "Maximum Number of Stays" & value > 60000))|>
+    ggplot(aes(x = value))+
+    geom_histogram(bins = 30, fill = "#440154")+
+    geom_vline(data = df_stats_stays, aes(xintercept = value),col="#5ec962",lwd=2)+
+    facet_wrap(~statistic, nrow=2, scales = "free")+
+    theme_bw()+
+    scale_x_continuous(labels = ~ format(.x, scientific = FALSE))+
+    ggtitle(paste0("Prior Predictive Number of Stays, Observed Values in Green."))+
+    xlab("Statistic Value")+
+    ylab("Count")
+  
+  # Save Plot
+  saveRDS(plt_prior_pred_sty, "Plots/plt_prior_pred_sty.rds")
+  
+}else{
+  plt_prior_pred_sty <- readRDS("Plots/plt_prior_pred_sty.rds")
+}
+
+
+
+# Plot Prior Predictive Distribution - Total Length of Stay
+if(!file.exists("Plots/plt_prior_pred_los.rds")){
+  
+  plt_prior_pred_los <- draws_prior_reps|>
+    filter(.variable == "rep_los")|>
+    group_by(.draw)|>
+    summarise(`Minimum Total Length of Stay` = min(.value), 
+              `Maximum Total Length of Stay` = max(.value), 
+              `Median Total Length of Stay` = median(.value), 
+              `Skew of Total Length of Stay` = skewness(.value))|>
+    pivot_longer(cols = 2:5, names_to = "statistic")|>
+    filter(!(statistic == "Maximum Total Length of Stay" & value > 1000000),
+           !(statistic == "Median Total Length of Stay" & value > 5000))|>
+    ggplot(aes(x = value))+
+    geom_histogram(bins = 30, fill = "#440154")+
+    geom_vline(data = df_stats_los, aes(xintercept = value),col="#5ec962",lwd=2)+
+    facet_wrap(~statistic, nrow=2, scales = "free")+
+    theme_bw()+
+    scale_x_continuous(labels = ~ format(.x, scientific = FALSE))+
+    ggtitle(paste0("Prior Predictive Total Length of Stay, Observed Values in Green."))+
+    xlab("Statistic Value")+
+    ylab("Count")
+  
+  # Save Plot
+  saveRDS(plt_prior_pred_los, "Plots/plt_prior_pred_los.rds")
+  
+}else{
+  plt_prior_pred_los <- readRDS("Plots/plt_prior_pred_los.rds")
+}
+
+
+
 
 
 #### Posterior ####
 
-
 # Input list
-list_bin_post <- list(patients = df_HA_stan$Patients,
-                       pop = df_HA_stan$Population,
-                       CA = df_HA_stan$CA_ID,
+list_pois_post <- list(los = df_HA_stan$TotalLengthofStay,
+                       log_stays = log(df_HA_stan$Stays),
+                       stays_int = df_HA_stan$Stays,
+                       log_pop = log(df_HA_stan$Population),
+                       adm = df_HA_stan$Adm,
                        age = df_HA_stan$Age,
-                       sex = df_HA_stan$Sex,
+                       geo = df_HA_stan$Geo,
+                       male = df_HA_stan$Male,
                        condition_on_data = 1, # the model conditions on the data
-                       n = nrow(df_HA_stan))
+                       n = nrow(df_HA_stan),
+                       n_adm = 3,
+                       n_age = 19,
+                       n_geo = 32,
+                       n_proj = nrow(df_proj_stan),
+                       log_pop_proj = log(df_proj_stan$Population),
+                       adm_proj = df_proj_stan$Adm,
+                       age_proj = df_proj_stan$Age,
+                       geo_proj = df_proj_stan$Geo,
+                       male_proj = df_proj_stan$Male,
+                       n_fix = nrow(df_fix_stan),
+                       log_pop_fix = log(df_fix_stan$Population),
+                       adm_fix = df_fix_stan$Adm,
+                       age_fix = df_fix_stan$Age,
+                       geo_fix = df_fix_stan$Geo,
+                       male_fix = df_fix_stan$Male)
 
 
 
-if(!file.exists("Models/samples_bin.rds")){
+if(!file.exists("Models/samples_pois_post.rds")){
   # Compiles the model
-  stan_bin <- stan_model(model_name = "stan_bin",model_code=code_bin)
+  stan_pois <- stan_model(model_name = "stan_pois",model_code=code_pois)
   
   # Sample
-  samples_bin <-  sampling(stan_bin,
-                           data = list_bin_post, 
-                           chains=4, iter = 2000,
-                           cores = parallel::detectCores())
+  samples_pois_post <-  sampling(stan_pois,
+                                 data = list_pois_post, 
+                                 chains=1, iter = 1000,
+                                 cores = parallel::detectCores())
   
   # Save file
-  saveRDS(samples_bin,file="Models/samples_bin.rds")
+  saveRDS(samples_pois_post,file="Models/samples_pois_post.rds")
 }else{
-  samples_bin <- readRDS(file="Models/samples_bin.rds")
+  samples_pois_post <- readRDS(file="Models/samples_pois_post.rds")
 }
 
 
+### Add in diagnostic work here. Trace plots and function to extract Rhat.
+# read Rhat() documentation, think I can use gather_draws to shape like this.
 
 
-#### Projections ####
+# pars = c("b_adm_sty","b_age_sty","b_male_sty","b_geo_sty", 
+#          "b_adm_los","b_age_los","b_male_los","b_geo_los", 
+#          "rep_stays","rep_los",
+#          "proj_stays_int","proj_los")
 
-# Better to integrate the below into the generated quantities block of
-# the model above
+# print(samples_pois_post, pars = c("b_adm_sty","b_age_sty","b_male_sty","b_geo_sty"))
 
-code_bin_proj <- 
-"data{
 
-  // Data - Population Projections
-  int<lower=0> n;
-  array[n] int pop_proj;
-  array[n] int<lower=1, upper=32> CA;
-  array[n] int<lower=1, upper=19> age;
-  array[n] int<lower=1, upper=2> sex;
+# Save Model Outputs
+if(!file.exists("Model_Outputs/draws_post_param.parquet") |
+   !file.exists("Model_Outputs/draws_post_reps.parquet") |
+   !file.exists("Model_Outputs/draws_post_proj.parquet")){
   
-  // Parameter Samples
-  int<lower=0> n_samples;
-  array[32, n_samples] real b_CA;
-  array[19, n_samples] real b_age;
-  array[2, n_samples] real b_sex;
+  # draws_post_param <- gather_draws(samples_pois_post,
+  #                                  b_adm_sty[i],b_age_sty[i],b_male_sty,b_geo_sty[i], 
+  #                                  b_adm_los[i],b_age_los[i],b_male_los,b_geo_los[i])
+  # 
+  # Save file
+  #write_parquet(draws_post_param,sink="Model_Outputs/draws_post_param.parquet")
+  
+  draws_post_reps <- gather_draws(samples_pois_post, 
+                                  rep_stays[i], mu_sty[i],
+                                  rep_los[i], mu_los[i])
+  
+  # Save file
+  write_parquet(draws_post_reps,sink="Model_Outputs/draws_post_reps.parquet")
+  
+  draws_post_proj <- gather_draws(samples_pois_post, 
+                                  proj_stays_int[i], proj_los[i])
+  
+  # Save file
+  write_parquet(draws_post_proj,sink="Model_Outputs/draws_post_proj.parquet")
+  
+}else{
+  draws_post_param <- read_parquet("Model_Outputs/draws_post_param.parquet")
+  draws_post_reps <- read_parquet("Model_Outputs/draws_post_reps.parquet")
+  draws_post_proj <- read_parquet("Model_Outputs/draws_post_proj.parquet")
 }
-parameters{
+
+
+
+
+# Plot Posterior Predictive Distribution - Number of Stays
+if(!file.exists("Plots/plt_post_pred_sty.rds")){
+  
+  plt_post_pred_sty <- draws_post_reps|>
+    filter(.variable == "rep_stays")|>
+    group_by(.draw)|>
+    summarise(`Minimum Number of Stays` = min(.value), 
+              `Maximum Number of Stays` = max(.value), 
+              `Median Number of Stays` = median(.value), 
+              `Skew of Number of Stays` = skewness(.value))|>
+    pivot_longer(cols = 2:5, names_to = "statistic")|>
+    filter(!(statistic == "Maximum Number of Stays" & value > 60000))|>
+    ggplot(aes(x = value))+
+    geom_histogram(bins = 30, fill = "#440154")+
+    geom_vline(data = df_stats_stays, aes(xintercept = value),col="#5ec962",lwd=2)+
+    facet_wrap(~statistic, nrow=2, scales = "free")+
+    theme_bw()+
+    scale_x_continuous(labels = ~ format(.x, scientific = FALSE))+
+    ggtitle(paste0("Posterior Predictive Number of Stays, Observed Values in Green."))+
+    xlab("Statistic Value")+
+    ylab("Count")
+  
+  # Save Plot
+  saveRDS(plt_post_pred_sty, "Plots/plt_post_pred_sty.rds")
+  
+}else{
+  plt_post_pred_sty <- readRDS("Plots/plt_post_pred_sty.rds")
 }
-model{
+
+
+
+# Plot Posterior Predictive Distribution - Total Length of Stay
+if(!file.exists("Plots/plt_post_pred_los.rds")){
+  
+  plt_post_pred_los <- draws_post_reps|>
+    filter(.variable == "rep_los")|>
+    group_by(.draw)|>
+    summarise(`Minimum Total Length of Stay` = min(.value), 
+              `Maximum Total Length of Stay` = max(.value), 
+              `Median Total Length of Stay` = median(.value), 
+              `Skew of Total Length of Stay` = skewness(.value))|>
+    pivot_longer(cols = 2:5, names_to = "statistic")|>
+    filter(!(statistic == "Maximum Total Length of Stay" & value > 1000000),
+           !(statistic == "Median Total Length of Stay" & value > 5000))|>
+    ggplot(aes(x = value))+
+    geom_histogram(bins = 30, fill = "#440154")+
+    geom_vline(data = df_stats_los, aes(xintercept = value),col="#5ec962",lwd=2)+
+    facet_wrap(~statistic, nrow=2, scales = "free")+
+    theme_bw()+
+    scale_x_continuous(labels = ~ format(.x, scientific = FALSE))+
+    ggtitle(paste0("Posterior Predictive Total Length of Stay, Observed Values in Green."))+
+    xlab("Statistic Value")+
+    ylab("Count")
+  
+  # Save Plot
+  saveRDS(plt_post_pred_los, "Plots/plt_post_pred_los.rds")
+  
+}else{
+  plt_post_pred_los <- readRDS("Plots/plt_post_pred_los.rds")
 }
-generated quantities{
-
-    // Initialise
-    real mu;
-    real prob;
-    array[n,n_samples] int pat_proj;
-    
-    for(i in 1:n){
-    
-        for(j in 1:n_samples){
-        
-          // Generate fitted values
-          mu = b_CA[CA[i],j] + b_age[age[i],j] + b_sex[sex[i],j];
-          prob = inv_logit(mu);
-      
-          // Generate replicated data
-          pat_proj[i,j]=binomial_rng(pop_proj[i],prob);
-      
-        }
-    
-    }
-
-}"
 
 
-m_CA_param <- as.matrix(samples_bin, pars = "b_CA")|> t()
-m_age_param <- as.matrix(samples_bin, pars = "b_age")|> t()
-m_sex_param <- as.matrix(samples_bin, pars = "b_sex")|> t()
+
+
+
+
+
+
+
+
+# Plot Histogram of Prior Reps
+if(!file.exists("Plots/plt_prior_reps.rds")){
+  
+  plt_prior_reps <- draws_prior_reps|>
+    filter(!(.variable == "rep_stays" & .value >2000), # scale plot wrt 99th percentile
+           !(.variable == "rep_los" & .value >15000))|>
+    mutate(.variable = case_match(.variable,
+                                  "mu_sty" ~ "Mu Stays",
+                                  "mu_los" ~ "Mu Total Length of Stays",
+                                  "rep_sty" ~ "Number of Stays",
+                                  "rep_los" ~ "Total Length of Stay"))|>
+    ggplot(aes(x = .value))+
+    geom_histogram(fill="#440154", bins = 30)+
+    facet_wrap(~.variable, scales = "free")+
+    ggtitle("Prior Predictive Distribution")+
+    ylab("Count")+
+    xlab("Value")+
+    scale_y_continuous(labels = ~ format(.x, scientific = FALSE))+
+    theme_bw()
+  
+  # Save Plot
+  saveRDS(plt_prior_reps, "Plots/plt_prior_reps.rds")
+  
+}else{
+  plt_prior_reps <- readRDS("Plots/plt_prior_reps.rds")
+}
+
+
+
+
+
+
+
+
+#### Simulation ####
+
+# Simulate data:
+# Age
+# Male
+# Population
+# age parameters
+# sex parameter
+# Length of Stay
+
+
+
+if(!file.exists("Data_Clean/Simulated Data Simple Poisson (CA).csv")){
+  
+  sim_rows <- 10*3*19*2*32 # Number of Years * Adm Categories 
+  # * Age Categories * Sex Categories * Num Geo
+  
+  # Set Seed
+  set.seed(1)
+  
+  # Parameter values for age, maleness, geographical unit
+  sim_param_adm <- rnorm(n=3, mean = 0, sd = 1)
+  sim_param_age <-  -4+(7/19)*1:19
+  sim_param_male <-  1
+  sim_param_geo <- c(0, runif(n=31,min=-1,max = 1))
+  
+  # Create simulated data
+  df_sim <- expand_grid(Year = 1:10, Age = 1:19, Male = 0:1, Geo = 1:32)|>
+    mutate(param_age = sim_param_age[Age],
+           param_male = if_else(Male == 1, sim_param_male, 0),
+           param_geo = sim_param_geo[Geo],
+           Population = as.integer(10000 - if_else(Age<=8,5000/Age,200*Age)
+                                   +runif(n = sim_rows, min = -4000, max = 4000)),
+           TotalLengthofStay = rpois(n = sim_rows, 
+                                     lambda = Population*exp(param_age 
+                                                             + param_male
+                                                             + param_geo)))
+  
+  write_csv(df_sim, file = "Data_Clean/Simulated Data Simple Poisson (CA).csv")
+  
+}else{
+  
+  df_sim <- read_csv("Data_Clean/Simulated Data Simple Poisson (CA).csv")
+  
+}
+
+# Plot overall population against age - pattern looks reasonable
+df_sim|>
+  group_by(Age)|>
+  summarise(Population = sum(Population))|>
+  ggplot(aes(x = Age, y = Population))+
+  geom_point()
+
+
+# Extract True (Simulated) Parameter Values
+
+f_extract_sim_param <- function(df, name, param_name){
+  result <- df|>
+    select(name, param_name)|>
+    unique()|>
+    arrange(name)|>
+    pull(param_name)}
+
+sim_param_age <-  f_extract_sim_param(df_sim, "Age", "param_age")
+sim_param_male <-  f_extract_sim_param(df_sim, "Male", "param_male")[2]
+sim_param_geo <-  f_extract_sim_param(df_sim, "Geo", "param_geo")
+
+
+#### Test Model on Simulated Data ####
 
 # Input list
-list_bin_proj <- list(pop_proj = df_proj_stan$Population,
-                      CA = df_proj_stan$CA_ID,
-                      age = df_proj_stan$Age,
-                      sex = df_proj_stan$Sex,
-                      n = nrow(df_proj_stan),
-                      b_CA = m_CA_param,
-                      b_age = m_age_param,
-                      b_sex = m_sex_param,
-                      n_samples = ncol(m_CA_param))
+list_pois_sim <- list(los = df_sim$TotalLengthofStay,
+                      pop = df_sim$Population,
+                      age = df_sim$Age,
+                      geo = df_sim$Geo,
+                      male = df_sim$Male,
+                      condition_on_data = 1,
+                      perform_projections = 0,
+                      n = nrow(df_sim),
+                      n_age = 19,
+                      n_geo = 32,
+                      n_proj = 10,
+                      pop_proj = rep(1,10),
+                      age_proj = rep(1,10),
+                      geo_proj = rep(1,10),
+                      male_proj = rep(1,10),
+                      perform_projections = 0)
 
 
 
-if(!file.exists("Models/samples_bin_proj.rds")){
+if(!file.exists("Models/samples_pois_sim.rds")){
   # Compiles the model
-  stan_bin_proj <- stan_model(model_name = "stan_bin_proj",model_code=code_bin_proj)
+  stan_pois <- stan_model(model_name = "stan_pois",model_code=code_pois)
   
   # Sample
-  # samples_bin_proj <-  sampling(stan_bin_proj,
-  #                          data = list_bin_proj, 
-  #                          cores = parallel::detectCores(),
-  #                          chains = 1, iter = 100,
-  #                          algorithm = "Fixed_param" )
+  samples_pois_sim <-  sampling(stan_pois,
+                                data = list_pois_sim, 
+                                chains=4, iter = 1000,
+                                cores = parallel::detectCores())
   
   # Save file
-  #saveRDS(samples_bin_proj,file="Models/samples_bin_proj.rds")
+  saveRDS(samples_pois_sim,file="Models/samples_pois_sim.rds")
 }else{
-  samples_bin_proj <- readRDS(file="Models/samples_bin_proj.rds")
+  samples_pois_sim <- readRDS(file="Models/samples_pois_sim.rds")
 }
 
 
 
-#### Quick Projections ####
-
-# Projections in R using samples from the parameter posteriors
-
-n_pop = nrow(df_proj_stan)
-n_samp = ncol(m_CA_param)
-
-m_pat_proj <- matrix(data = 0, nrow = n_pop, ncol = n_samp)
-
-for(i in 1:n_pop){
+# Plot Whether the 95% CI Covers the True Parameter Values
+if(!file.exists("Plots/pl_sim_param_age.rds")){
+  pl_sim_param_age <- samples_pois_sim|>gather_draws(b_age[i],b_male)|>
+    mean_qi(.value, .width=0.95)|>
+    #filter(i < 8 | is.na(i))|>
+    mutate(i = if_else(i<10,paste0("0",i),as.character(i)),
+           j = if_else(is.na(i),"Age",i))|>
+    ggplot(aes(x=j,y=.value,ymin = .lower, ymax = .upper))+ 
+    geom_pointinterval()+
+    geom_point(aes(y = c(sim_param_age,sim_param_male)), col = "red", shape = 18, size = 4)+
+    facet_wrap(~j, nrow=4, scales = "free")+
+    theme(axis.text.x=element_blank(), 
+          axis.ticks.x=element_blank(), 
+          axis.text.y=element_blank(),  
+          axis.ticks.y=element_blank())+
+    ggtitle("Does the model recover the age and male parameters?")
   
-  for(j in 1:n_samp){
-
-    # Generate fitted values
-    mu = m_CA_param[df_proj_stan$CA_ID[i],j] + 
-      m_age_param[df_proj_stan$Age[i],j] + 
-      m_sex_param[df_proj_stan$Sex[i],j];
-    prob = f_inv_logit(mu);
-    
-    # Generate replicated data
-    m_pat_proj[i,j] <- rbinom(n = 1, size = df_proj_stan$Population[i], prob = prob);
-    
-  }
-  
+  saveRDS(pl_sim_param_age, file = "Plots/pl_sim_param_age.rds")
+}else{
+  pl_sim_param_age <- readRDS("Plots/pl_sim_param_age.rds")
 }
 
+# Plot Results
+if(!file.exists("Plots/pl_sim_param_geo.rds")){
+  pl_sim_param_geo <- samples_pois_sim|>gather_draws(b_geo[i])|>
+    mean_qi(.value, .width=0.95)|>
+    ggplot(aes(x=i,y=.value,ymin = .lower, ymax = .upper))+ 
+    geom_pointinterval()+
+    geom_point(aes(y = sim_param_geo), col = "red", shape = 18, size = 4)+
+    facet_wrap(~i, nrow=4, scales = "free")+
+    theme(axis.text.x=element_blank(), 
+          axis.ticks.x=element_blank(), 
+          axis.text.y=element_blank(),  
+          axis.ticks.y=element_blank())+
+    ggtitle("Does the model recover the geographic parameters?")
+  
+  saveRDS(pl_sim_param_geo, file = "Plots/pl_sim_param_geo.rds")
+}else{
+  pl_sim_param_geo <- readRDS("Plots/pl_sim_param_geo.rds")
+}
+
+pl_sim_param_age
+pl_sim_param_geo
 
 
-# Save data
-# saveRDS(m_pat_proj, file = "Models/Patient Projections (R).RDS")
-# m_pat_proj <- readRDS("Models/Patient Projections (R).RDS")
 
 

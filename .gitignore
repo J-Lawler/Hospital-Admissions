@@ -48,10 +48,19 @@ po/*~
 # RStudio Connect folder
 rsconnect/
 
+# File types and files to exclude
+*.csv
+*.xlsx
+*.pdf
+Code_Submission.R
+softbib.bib
+
 # Data folder
 Archive/
 Data_Raw/
 Data_Clean/
+Plots/
+Model_Outputs/
 Misc/
 Models/
 Results/

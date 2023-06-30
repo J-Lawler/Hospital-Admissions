@@ -1,0 +1,43 @@
+The data sources listed in this file are saved to a folder called Data_Raw.
+
+This folder contains two subfolders, Health Boards Spatial and Local Authorities Spatial, which contain the respective spatial files listed below.
+
+Acitivity by Council Area, Age and Sex
+Source: 
+https://www.opendata.nhs.scot/dataset/annual-inpatient-and-daycase-activity
+https://www.opendata.nhs.scot/dataset/annual-inpatient-and-daycase-activity/resource/32058e0a-0107-4035-891c-5c6a8571415a
+Data dictionary at link.
+
+Council Area Population Estimates
+Source:
+https://www.opendata.nhs.scot/fa_IR/dataset/population-estimates/resource/09ebfefb-33f4-4f6a-8312-2d14e2b02ace
+
+Council Area Projections
+Source:
+https://www.opendata.nhs.scot/fa_IR/dataset/population-projections/resource/63d8e0b9-32e2-4847-9353-177f8d931c10
+Ultimately from NRS here (includes the report):
+https://www.nrscotland.gov.uk/statistics-and-data/statistics/statistics-by-theme/population/population-projections/sub-national-population-projections/2018-based
+
+Statistical Qualifier Lookup
+Source:
+https://www.opendata.nhs.scot/dataset/statistical-qualifiers/resource/b80f9af0-b115-4245-b591-fb22775226c4
+
+Council Area Codes
+Source:
+https://www.opendata.nhs.scot/dataset/geography-codes-and-labels
+
+Health Board Codes
+Source:
+https://www.opendata.nhs.scot/dataset/geography-codes-and-labels/resource/652ff726-e676-4a20-abda-435b98dd7bdc
+
+Health Boards Spatial
+Source:
+https://spatialdata.gov.scot/geonetwork/srv/eng/catalog.search#/metadata/f12c3826-4b4b-40e6-bf4f-77b9ed01dc14
+
+Local Authorities Spatial
+Source:
+https://data.spatialhub.scot/dataset/local_authority_boundaries-is/resource/d24c5735-0f1c-4819-a6bd-dbfeb93bd8e4
+
+Postcode Index
+Source:
+https://www.nrscotland.gov.uk/statistics-and-data/geography/our-products/scottish-postcode-directory/2023-1
